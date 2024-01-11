@@ -157,9 +157,8 @@ const defaultObject = {
   },
 };
 
-const searchObj = reactive(Object.assign({}, defaultObject));
-
 const useLogs = () => {
+  const searchObj = reactive(Object.assign({}, defaultObject));
   const store = useStore();
   const { t } = useI18n();
   const $q = useQuasar();
