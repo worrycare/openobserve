@@ -15,7 +15,7 @@
 
 use actix_web::{
     dev::ServiceRequest,
-    error::{ErrorForbidden, ErrorUnauthorized},
+    error::{ErrorForbidden, ErrorNotFound, ErrorUnauthorized},
     http::{header, Method},
     web, Error,
 };
@@ -28,6 +28,7 @@ use crate::{
     common::{
         meta::{
             ingestion::INGESTION_EP,
+            organization::DEFAULT_ORG,
             proxy::QueryParamProxyURL,
             user::{TokenValidationResponse, UserRole},
         },
@@ -57,6 +58,9 @@ pub async fn validator(
         Some(path) => path,
         None => req.request().path(),
     };
+    //     if req.method().eq(&Method::POST) && path.ends_with("organizations") {
+    // return Err((ErrorForbidden("Unauthorized Access"), req));
+    // }
     match validate_credentials(user_id, password.trim(), path).await {
         Ok(res) => {
             if res.is_valid {
@@ -104,7 +108,6 @@ pub async fn validate_credentials(
     user_password: &str,
     path: &str,
 ) -> Result<TokenValidationResponse, Error> {
-    let user;
     let mut path_columns = path.split('/').collect::<Vec<&str>>();
     if let Some(v) = path_columns.last() {
         if v.is_empty() {
@@ -112,18 +115,9 @@ pub async fn validate_credentials(
         }
     }
 
-    // this is only applicable for super admin user
-    if is_root_user(user_id) {
-        user = users::get_user(None, user_id).await;
-        if user.is_none() {
-            return Ok(TokenValidationResponse {
-                is_valid: false,
-                user_email: "".to_string(),
-            });
-        }
-    } else if path_columns.last().unwrap_or(&"").eq(&"organizations") {
+    let user = if path_columns.last().unwrap_or(&"").eq(&"organizations") {
         let db_user = db::user::get_db_user(user_id).await;
-        user = match db_user {
+        match db_user {
             Ok(user) => {
                 let all_users = user.get_all_users();
                 if all_users.is_empty() {
@@ -135,10 +129,20 @@ pub async fn validate_credentials(
             Err(_) => None,
         }
     } else {
-        user = match path.find('/') {
+        match path.find('/') {
             Some(index) => {
                 let org_id = &path[0..index];
-                users::get_user(Some(org_id), user_id).await
+                if crate::service::organization::get_org(org_id)
+                    .await
+                    .is_none()
+                {
+                    return Err(ErrorNotFound("Organization not found"));
+                }
+                if is_root_user(user_id) {
+                    users::get_user(Some(DEFAULT_ORG), user_id).await
+                } else {
+                    users::get_user(Some(org_id), user_id).await
+                }
             }
             None => users::get_user(None, user_id).await,
         }
@@ -210,7 +214,6 @@ pub async fn validate_user(
     _user_id: &str,
     _user_password: &str,
 ) -> Result<TokenValidationResponse, Error> {
-    use actix_web::error::ErrorNotFound;
     log::warn!("Not supported in enterprise version");
     Err(ErrorNotFound("Not supported in enterprise version"))
 }

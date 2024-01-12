@@ -28,7 +28,7 @@ use crate::{
         alerts,
         functions::{StreamFunctionsList, Transform},
         maxmind::MaxmindClient,
-        organization::OrganizationSetting,
+        organization::{OrganizationSetting, Organization},
         prom::ClusterLeader,
         syslog::SyslogRoute,
         user::User,
@@ -51,6 +51,8 @@ pub static USERS: Lazy<RwHashMap<String, User>> = Lazy::new(DashMap::default);
 pub static USERS_RUM_TOKEN: Lazy<Arc<RwHashMap<String, User>>> =
     Lazy::new(|| Arc::new(DashMap::default()));
 pub static ROOT_USER: Lazy<RwHashMap<String, User>> = Lazy::new(DashMap::default);
+pub static ORGANIZATIONS: Lazy<Arc<RwAHashMap<String, Organization>>> =
+    Lazy::new(|| Arc::new(tokio::sync::RwLock::new(AHashMap::new())));
 pub static ORGANIZATION_SETTING: Lazy<Arc<RwAHashMap<String, OrganizationSetting>>> =
     Lazy::new(|| Arc::new(tokio::sync::RwLock::new(AHashMap::new())));
 pub static PASSWORD_HASH: Lazy<RwHashMap<String, String>> = Lazy::new(DashMap::default);

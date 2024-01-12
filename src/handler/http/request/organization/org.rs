@@ -311,6 +311,7 @@ async fn create_user_rumtoken(
         (status = 200, description = "Success", content_type = "application/json", body = RumIngestionResponse),
     )
 )]
+
 #[post("/organizations")]
 async fn create_org(
     _user_email: UserEmail,
@@ -324,3 +325,12 @@ async fn create_org(
         Err(err) => Err(err),
     }
 }
+
+/* #[post("/organizations")]
+async fn create_org(
+    _user_email: UserEmail,
+    _org: web::Json<Organization>,
+) -> Result<HttpResponse, Error> {
+    Ok(HttpResponse::Forbidden().json("Not Supported"))
+}
+ */

@@ -19,7 +19,10 @@ use regex::Regex;
 use crate::{
     common::{
         infra::{cluster, config::SYSLOG_ENABLED, file_list as infra_file_list},
-        meta::{organization::DEFAULT_ORG, user::UserRequest},
+        meta::{
+            organization::{Organization, DEFAULT_ORG},
+            user::UserRequest,
+        },
         utils::file::clean_empty_dirs,
     },
     service::{compact::stats::update_stats_from_file_list, db, users},
@@ -52,6 +55,12 @@ pub async fn init() -> Result<(), anyhow::Error> {
                 "Please set root user email-id & password using ZO_ROOT_USER_EMAIL & ZO_ROOT_USER_PASSWORD environment variables. This can also indicate an invalid email ID. Email ID must comply with ([a-z0-9_+]([a-z0-9_+.-]*[a-z0-9_+])?)@([a-z0-9]+([\\-\\.]{{1}}[a-z0-9]+)*\\.[a-z]{{2,6}})"
             );
         }
+        let _ = crate::service::organization::create_org(&Organization {
+            id: DEFAULT_ORG.to_owned(),
+            name: DEFAULT_ORG.to_owned(),
+        })
+        .await;
+
         let _ = users::create_root_user(
             DEFAULT_ORG,
             UserRequest {
@@ -74,9 +83,13 @@ pub async fn init() -> Result<(), anyhow::Error> {
     tokio::task::spawn(async move { db::user::watch().await });
     db::user::cache().await.expect("user cache failed");
 
+    db::organization::cache_orgs()
+        .await
+        .expect("organizations cache sync failed");
+
     db::organization::cache()
         .await
-        .expect("organization cache sync failed");
+        .expect("organization settings cache sync failed");
 
     // set instance id
     let instance_id = match db::get_instance().await {
@@ -112,6 +125,7 @@ pub async fn init() -> Result<(), anyhow::Error> {
     tokio::task::spawn(async move { db::alerts::watch().await });
     tokio::task::spawn(async move { db::alerts::triggers::watch().await });
     tokio::task::spawn(async move { db::organization::watch().await });
+    tokio::task::spawn(async move { db::organization::watch_orgs().await });
     tokio::task::yield_now().await; // yield let other tasks run
 
     // cache core metadata

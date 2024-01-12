@@ -174,6 +174,25 @@ pub async fn create_org(org: &Organization) -> Result<Organization, Error> {
     }
 }
 
+#[tracing::instrument]
+pub async fn remove_org(org_id: &str) -> Result<(), Error> {
+    match db::organization::delete(org_id).await {
+        Ok(_) => Ok(()),
+        Err(e) => {
+            log::error!("Error deleting org: {}", e);
+            Err(Error::new(
+                ErrorKind::Other,
+                format!("Error deleting org: {}", e),
+            ))
+        }
+    }
+}
+
+#[tracing::instrument]
+pub async fn get_org(org: &str) -> Option<Organization> {
+    db::organization::get(org).await
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

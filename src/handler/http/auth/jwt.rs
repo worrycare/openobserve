@@ -38,6 +38,8 @@ pub async fn process_token(
         get_user_org_tuple, get_user_role_tuple, update_tuples,
     };
 
+    use crate::{common::meta::organization::Organization, service::organization};
+
     let dec_token = res.1.unwrap();
 
     let groups = match dec_token.claims.get("groups") {
@@ -93,6 +95,11 @@ pub async fn process_token(
                 tuples.push(get_user_org_tuple(&user_email, &user_email));
             }
             tuples_to_add.insert(org.name.to_owned(), tuples);
+            let _ = organization::create_org(&Organization {
+                id: org.name.to_owned(),
+                name: org.name.to_owned(),
+            })
+            .await;
         }
         let updated_db_user = DBUser {
             email: user_email.to_owned(),
@@ -156,6 +163,8 @@ pub async fn process_token(
                 }
                 None => {
                     // The organization is not found in source_orgs, hence removed
+                    let _ = organization::remove_org(&existing_org.name.to_owned()).await;
+
                     orgs_removed.push(existing_org);
                 }
             }
@@ -163,6 +172,12 @@ pub async fn process_token(
 
         // Add the user to the newly added organizations
         for org in orgs_added {
+            let _ = organization::create_org(&Organization {
+                id: org.name.to_owned(),
+                name: org.name.to_owned(),
+            })
+            .await;
+
             match users::add_user_to_org(
                 &org.name,
                 &user_email,

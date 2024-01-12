@@ -19,7 +19,7 @@ use bytes::Bytes;
 
 use crate::common::{
     infra::{
-        config::ORGANIZATION_SETTING,
+        config::{ORGANIZATIONS, ORGANIZATION_SETTING},
         db as infra_db,
         errors::{self, Error},
     },
@@ -107,7 +107,7 @@ pub async fn watch() -> Result<(), anyhow::Error> {
 
 pub async fn set(org: &Organization) -> Result<(), anyhow::Error> {
     let db = infra_db::get_db().await;
-    let key = format!("{ORG_KEY_PREFIX}/{}", org.identifier);
+    let key = format!("{ORG_KEY_PREFIX}/{}", org.id);
     match db
         .put(
             &key,
@@ -126,10 +126,21 @@ pub async fn set(org: &Organization) -> Result<(), anyhow::Error> {
     Ok(())
 }
 
-pub async fn get(org_id: &str) -> Result<Organization, anyhow::Error> {
+pub async fn get(org_id: &str) -> Option<Organization> {
+    if ORGANIZATIONS.read().await.contains_key(org_id) {
+        return ORGANIZATIONS.read().await.get(org_id).cloned();
+    }
     let db = infra_db::get_db().await;
-    let val = db.get(&format!("{ORG_KEY_PREFIX}/{}", org_id)).await?;
-    Ok(json::from_slice(&val).unwrap())
+    match db.get(&format!("{ORG_KEY_PREFIX}/{}", org_id)).await {
+        Ok(v) => {
+            let org: Organization = json::from_slice(&v).unwrap();
+            Some(org)
+        }
+        Err(_) => {
+            log::error!("Org Not found");
+            None
+        }
+    }
 }
 
 pub async fn delete(org_id: &str) -> Result<(), anyhow::Error> {
@@ -143,4 +154,45 @@ pub async fn delete(org_id: &str) -> Result<(), anyhow::Error> {
         }
     }
     Ok(())
+}
+
+/// Cache the existing orgs in the beginning
+pub async fn cache_orgs() -> Result<(), anyhow::Error> {
+    let prefix = ORG_KEY_PREFIX;
+    let db = infra_db::get_db().await;
+    let ret = db.list(prefix).await?;
+    for (key, item_value) in ret {
+        let json_val: Organization = json::from_slice(&item_value).unwrap();
+        ORGANIZATIONS.clone().write().await.insert(key, json_val);
+    }
+    log::info!("Organizations  Cached");
+    Ok(())
+}
+
+pub async fn watch_orgs() -> Result<(), anyhow::Error> {
+    let key = ORG_KEY_PREFIX;
+    let cluster_coordinator = infra_db::get_coordinator().await;
+    let mut events = cluster_coordinator.watch(key).await?;
+    let events = Arc::get_mut(&mut events).unwrap();
+    log::info!("Start watching organizations");
+    loop {
+        let ev = match events.recv().await {
+            Some(ev) => ev,
+            None => {
+                log::error!("watch_orgs: event channel closed");
+                return Ok(());
+            }
+        };
+
+        if let infra_db::Event::Put(ev) = ev {
+            let item_key = ev.key;
+            let item_value = ev.value.unwrap();
+            let json_val: Organization = json::from_slice(&item_value).unwrap();
+            ORGANIZATIONS
+                .clone()
+                .write()
+                .await
+                .insert(item_key, json_val);
+        }
+    }
 }
