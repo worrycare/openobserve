@@ -63,10 +63,10 @@ const organizations = {
     return http().get(`api/organizations/verify_identifier/${name}`);
   },
   get_organization_passcode: (orgIdentifier: string) => {
-    return http().get(`/api/${orgIdentifier}/passcode`);
+    return http().get(`/api/${orgIdentifier}/organizations/passcode`);
   },
   update_organization_passcode: (orgIdentifier: string) => {
-    return http().put(`api/${orgIdentifier}/passcode`, {});
+    return http().put(`api/${orgIdentifier}/organizations/passcode`, {});
   },
   get_organization_summary: (orgIdentifier: string) => {
     return http().get(`/api/${orgIdentifier}/summary`);

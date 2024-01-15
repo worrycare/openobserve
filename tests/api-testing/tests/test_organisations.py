@@ -50,7 +50,7 @@ def test_e2e_passcode(create_session, base_url):
     url = base_url
     org_id = "default"
 
-    resp_get_allorgs = session.get(f"{url}api/{org_id}/passcode")
+    resp_get_allorgs = session.get(f"{url}api/{org_id}/organizations/passcode")
 
     print(resp_get_allorgs.content)
     assert (
