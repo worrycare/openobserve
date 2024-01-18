@@ -27,7 +27,7 @@ use crate::{
             config::{ENRICHMENT_TABLES, STREAM_SCHEMAS},
             db as infra_db,
         },
-        meta::stream::StreamSchema,
+        meta::{organization::Organization, stream::StreamSchema},
         utils::json,
     },
     service::enrichment::StreamTable,
@@ -377,6 +377,8 @@ pub async fn cache() -> Result<(), anyhow::Error> {
     let db = infra_db::get_db().await;
     let key = "/schema/";
     let ret = db.list(key).await?;
+    // check version
+    let old_version = super::version::get().await.unwrap_or("v0.0.0".to_string());
     for (item_key, item_value) in ret {
         let item_key_str = item_key.strip_prefix(key).unwrap();
         // Hack: compatible for DataFusion 15
@@ -405,6 +407,20 @@ pub async fn cache() -> Result<(), anyhow::Error> {
                 ));
             }
         };
+        let stream = item_key_str.split('/').collect::<Vec<&str>>();
+        let org_id = stream[0];
+
+        // create orgs for versions <0.8.0
+
+        if old_version.as_str() < "v0.8.0" && super::organization::get(org_id).await.is_none() {
+            log::info!("Creating org: {}", org_id);
+            let _ = super::organization::set(&Organization {
+                identifier: org_id.to_owned(),
+                name: org_id.to_owned(),
+            })
+            .await;
+        }
+
         STREAM_SCHEMAS.insert(item_key_str.to_string(), json_val);
     }
     log::info!("Stream schemas Cached");

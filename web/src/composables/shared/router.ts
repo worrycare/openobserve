@@ -32,6 +32,7 @@ const AlertList = () => import("@/components/alerts/AlertList.vue");
 const TemplateList = () => import("@/components/alerts/TemplateList.vue");
 const DestinationList = () => import("@/components/alerts/DestinationList.vue");
 const Settings = () => import("@/components/settings/index.vue");
+import Organizations from "@/enterprise/components/organizations/Organization.vue";
 
 import ImportDashboard from "@/views/Dashboards/ImportDashboard.vue";
 const Functions = () => import("@/views/Functions.vue");
@@ -181,6 +182,17 @@ const useRoutes = () => {
       props: true,
       meta: {
         // keepAlive: true,
+      },
+      beforeEnter(to: any, from: any, next: any) {
+        routeGuard(to, from, next);
+      },
+    },
+    {
+      path: "organizations",
+      name: "organizations",
+      component: Organizations,
+      meta: {
+        keepAlive: true,
       },
       beforeEnter(to: any, from: any, next: any) {
         routeGuard(to, from, next);

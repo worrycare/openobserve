@@ -96,7 +96,7 @@ pub async fn process_token(
             }
             tuples_to_add.insert(org.name.to_owned(), tuples);
             let _ = organization::create_org(&Organization {
-                id: org.name.to_owned(),
+                identifier: org.name.to_owned(),
                 name: org.name.to_owned(),
             })
             .await;
@@ -173,7 +173,7 @@ pub async fn process_token(
         // Add the user to the newly added organizations
         for org in orgs_added {
             let _ = organization::create_org(&Organization {
-                id: org.name.to_owned(),
+                identifier: org.name.to_owned(),
                 name: org.name.to_owned(),
             })
             .await;

@@ -107,7 +107,7 @@ pub async fn watch() -> Result<(), anyhow::Error> {
 
 pub async fn set(org: &Organization) -> Result<(), anyhow::Error> {
     let db = infra_db::get_db().await;
-    let key = format!("{ORG_KEY_PREFIX}/{}", org.id);
+    let key = format!("{ORG_KEY_PREFIX}/{}", org.identifier);
     match db
         .put(
             &key,

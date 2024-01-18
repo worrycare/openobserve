@@ -56,7 +56,7 @@ pub async fn init() -> Result<(), anyhow::Error> {
             );
         }
         let _ = crate::service::organization::create_org(&Organization {
-            id: DEFAULT_ORG.to_owned(),
+            identifier: DEFAULT_ORG.to_owned(),
             name: DEFAULT_ORG.to_owned(),
         })
         .await;
