@@ -979,9 +979,10 @@ pub async fn merge_parquet_files(
 
     // get all sorted data
     let query_sql = format!(
-        "SELECT * FROM tbl ORDER BY {} DESC",
+        "SELECT tbl.*, row_number() over ( order by {} DESC ) as docid FROM tbl",
         CONFIG.common.column_timestamp
     );
+
     let df = ctx.sql(&query_sql).await?;
     let schema: Schema = df.schema().into();
     let schema = Arc::new(schema);
