@@ -149,7 +149,7 @@ pub async fn search(
     let took_wait = start.elapsed().as_millis() as usize;
 
     // do search
-    match SearchService::search(&session_id, &org_id, stream_type, &req).await {
+    match search_in(&mut req, stream_type, &org_id, session_id.clone()).await {
         Ok(mut res) => {
             let time = start.elapsed().as_secs_f64();
             metrics::HTTP_RESPONSE_TIME
@@ -223,6 +223,42 @@ pub async fn search(
             })
         }
     }
+}
+
+pub(crate) async fn search_in(
+    req: &mut meta::search::Request,
+    stream_type: StreamType,
+    org_id: &str,
+    session_id: String,
+) -> Result<meta::search::Response, crate::common::infra::errors::Error> {
+    let mut query_fn = req
+        .query
+        .query_fn
+        .as_ref()
+        .and_then(|v| base64::decode(v).ok());
+
+    if let Some(vrl_function) = &query_fn {
+        if !vrl_function.trim().ends_with('.') {
+            query_fn = Some(format!("{} \n .", vrl_function));
+        }
+    }
+    req.query.query_fn = query_fn;
+
+    for fn_name in functions::get_all_transform_keys(org_id).await {
+        if req.query.sql.contains(&format!("{}(", fn_name)) {
+            req.query.uses_zo_fn = true;
+            break;
+        }
+    }
+
+    // get a local search queue lock
+    let locker = SearchService::QUEUE_LOCKER.clone();
+    let locker = locker.lock().await;
+    if !CONFIG.common.feature_query_queue_enabled {
+        drop(locker);
+    }
+    // do search
+    SearchService::search(&session_id, org_id, stream_type, req).await
 }
 
 /// SearchAround

@@ -37,7 +37,10 @@ use super::{
         stream, syslog, traces, users, *,
     },
 };
-use crate::common::meta::{middleware_data::RumExtraData, proxy::PathParamProxyURL};
+use crate::{
+    common::meta::{middleware_data::RumExtraData, proxy::PathParamProxyURL},
+    handler::http::router::federated_search::search::federated_search,
+};
 
 pub mod openapi;
 pub mod ui;
@@ -321,7 +324,8 @@ pub fn get_service_routes(cfg: &mut web::ServiceConfig) {
             .service(logs::ingest::json)
             .service(logs::ingest::handle_kinesis_request)
             .service(logs::ingest::handle_gcp_request)
-            .service(organization::org::create_org),
+            .service(organization::org::create_org)
+            .service(federated_search),
     );
 }
 
