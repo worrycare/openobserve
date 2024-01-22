@@ -29,19 +29,19 @@ use config::{
     utils::parquet::{read_metadata_from_bytes, read_metadata_from_file},
     FxIndexMap, CONFIG,
 };
+use datafusion::{datasource::file_format::parquet::ParquetFormat, execution::context::SessionContext};
 use parquet::arrow::ParquetRecordBatchStreamBuilder;
 use tokio::{sync::Semaphore, task::JoinHandle, time};
 
 use crate::{
     common::{
-        infra::{cache, cluster, storage, wal},
-        utils::{
+        infra::{cache, cluster, storage, wal}, meta::search::SearchType, utils::{
             asynchronism::file::{get_file_contents, get_file_meta},
             file::scan_files,
-        },
+        }
     },
     service::{
-        db, schema::schema_evolution, search::datafusion::exec::merge_parquet_files, stream,
+        db, schema::schema_evolution, search::datafusion::exec::{create_runtime_env, create_session_config, merge_parquet_files}, stream,
     },
 };
 
@@ -379,6 +379,26 @@ async fn merge_files(
         new_file_meta.compressed_size,
     );
 
+    // Now we generate the index file based on the newly created file.
+    
+    let runtime_env = create_runtime_env()?;
+    let session_config = create_session_config(&SearchType::Normal)?;
+    let ctx = SessionContext::new_with_config_rt(session_config, Arc::new(runtime_env));
+
+    // Configure listing options
+    let file_format = ParquetFormat::default();
+    let listing_options = ListingOptions::new(Arc::new(file_format))
+        .with_file_extension(FileType::PARQUET.get_ext())
+        .with_target_partitions(CONFIG.limit.cpu_num);
+    let prefix = ListingTableUrl::parse(format!("tmpfs:///{session_id}/"))?;
+    let config = ListingTableConfig::new(prefix)
+        .with_listing_options(listing_options)
+        .with_schema(schema);
+
+    let table = ListingTable::try_new(config)?;
+    ctx.register_table("tbl", Arc::new(table))?;
+
+    // End of index generation
     // upload file
     match storage::put(&new_file_key, buf.into()).await {
         Ok(_) => Ok((new_file_key, new_file_meta, retain_file_list)),
