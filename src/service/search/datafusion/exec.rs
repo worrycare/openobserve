@@ -979,7 +979,7 @@ pub async fn merge_parquet_files(
 
     // get all sorted data
     let query_sql = format!(
-        "SELECT tbl.*, row_number() over ( order by {} DESC ) as docid FROM tbl",
+        "SELECT tbl.*, doc_id(_timestamp) as docid FROM tbl order by {} DESC",
         CONFIG.common.column_timestamp
     );
 
@@ -1071,6 +1071,7 @@ async fn register_udf(ctx: &mut SessionContext, _org_id: &str) {
     ctx.register_udf(super::regexp_udf::REGEX_NOT_MATCH_UDF.clone());
     ctx.register_udf(super::time_range_udf::TIME_RANGE_UDF.clone());
     ctx.register_udf(super::date_format_udf::DATE_FORMAT_UDF.clone());
+    ctx.register_udf(super::doc_id_udf::DOC_ID_UDF.clone());
 
     {
         let udf_list = get_all_transform(_org_id).await;
