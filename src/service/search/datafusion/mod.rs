@@ -18,6 +18,7 @@ use std::str::FromStr;
 use crate::common::meta::functions::ZoFunction;
 
 mod date_format_udf;
+mod doc_id_udf;
 pub mod exec;
 pub mod match_udf;
 pub mod regexp_udf;
@@ -53,6 +54,8 @@ pub const MATCH_UDF_IGNORE_CASE_NAME: &str = "str_match_ignore_case";
 pub const REGEX_MATCH_UDF_NAME: &str = "re_match";
 /// The name of the not_regex_match UDF given to DataFusion.
 pub const REGEX_NOT_MATCH_UDF_NAME: &str = "re_not_match";
+/// The name of the udf which generates unique doc-id for a given row of data given to DataFusion.
+pub const DOC_ID_UDF_NAME: &str = "doc_id";
 
 pub const DEFAULT_FUNCTIONS: [ZoFunction; 6] = [
     ZoFunction {
