@@ -26,33 +26,49 @@ use datafusion::{
     physical_plan::functions::make_scalar_function,
     prelude::create_udf,
 };
-use once_cell::sync::Lazy;
+use datafusion_expr::{ColumnarValue, ScalarFunctionImplementation};
+
+// pub fn random(args: &[ColumnarValue]) -> datafusion::error::Result<ColumnarValue> {
+// // pub fn random(args: &[ColumnarValue]) -> datafusion::error::Result<ColumnarValue> {
+//     let len: usize = match &args[0] {
+//         ColumnarValue::Array(array) => array.len(),
+//         _ => {
+//             return Err(DataFusionError::Internal(format!(
+//                 "{} was called with {} arguments. Did not expect any. {}",
+//                 super::DOC_ID_UDF_NAME,
+//                 args.len(),
+//                 args[0].data_type(),
+//             )));
+//         }
+//     };
+
+//     let values: Vec<String> = (0..len)
+//         .map(|_| KsuidMs::new(None, None).to_string())
+//         .collect();
+//     let array = StringArray::from_iter_values(values);
+//     Ok(ColumnarValue::Array(Arc::new(array)))
+// }
 
 /// Implementation of unique document id for a given row of data
-pub(crate) static DOC_ID_UDF: Lazy<ScalarUDF> = Lazy::new(|| {
+pub(crate) fn doc_id_udf_impl() -> ScalarUDF {
     create_udf(
         super::DOC_ID_UDF_NAME,
-        // expects two string
         vec![DataType::Utf8],
-        // returns boolean
         Arc::new(DataType::Utf8),
         Volatility::Volatile,
-        make_scalar_function(doc_id_generator),
+        doc_id_generator_impl(),
     )
-});
+}
+
+pub fn doc_id_generator_impl() -> ScalarFunctionImplementation {
+    let func =
+        move |args: &[ArrayRef]| -> datafusion::error::Result<ArrayRef> { doc_id_generator(args) };
+    make_scalar_function(func)
+}
 
 fn doc_id_generator(args: &[ArrayRef]) -> datafusion::error::Result<ArrayRef> {
-    if args.len() != 1 {
-        return Err(DataFusionError::Internal(format!(
-            "{} was called with {} arguments. Only pass doc_id_generator(any-existing-column).",
-            super::DOC_ID_UDF_NAME,
-            args.len()
-        )));
-    }
-
-    let input_rows = datafusion::common::cast::as_string_array(&args[0])?;
-    let count = input_rows.len();
-    let result: Vec<String> = (0..count).map(|_| ider::generate()).collect();
+    let rows = datafusion::common::cast::as_string_array(&args[0])?;
+    let result: Vec<String> = (0..rows.len()).map(|_| ider::generate()).collect();
     Ok(Arc::new(StringArray::from(result)) as ArrayRef)
 }
 
@@ -74,7 +90,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_generate_doc_id() {
-        let sql = "select t.*, doc_id(log) as doc_ids from t";
+        let sql = "select * from t";
 
         // define a schema.
         let schema = Arc::new(Schema::new(vec![
@@ -97,7 +113,6 @@ mod tests {
         // declare a new context. In spark API, this corresponds to a new spark
         // SQLsession
         let ctx = SessionContext::new();
-        ctx.register_udf(DOC_ID_UDF.clone());
 
         // declare a table in memory. In spark API, this corresponds to
         // createDataFrame(...).
@@ -105,6 +120,17 @@ mod tests {
         ctx.register_table("t", Arc::new(provider)).unwrap();
 
         let df = ctx.sql(sql).await.unwrap();
+
+        // Register the UDF, from this point on, we should have access to this udf.
+        ctx.register_udf(doc_id_udf_impl());
+        ctx.register_table("raw", df.into_view()).unwrap();
+
+        let df = ctx
+            .sql("select raw.*, generate_doc_ids(log) as doc_ids from raw")
+            // .sql("select raw.*, generate_doc_ids as doc_ids from raw")
+            .await
+            .unwrap();
+        df.clone().show().await.unwrap();
         let result = df.collect().await.unwrap();
         assert_eq!(result.len(), 1);
 

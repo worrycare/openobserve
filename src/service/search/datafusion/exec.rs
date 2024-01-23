@@ -13,7 +13,7 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-use std::{str::FromStr, sync::Arc};
+use std::{fs::OpenOptions, str::FromStr, sync::Arc};
 
 use ahash::AHashMap as HashMap;
 use config::{
@@ -45,8 +45,10 @@ use datafusion::{
     prelude::{cast, col, lit, Expr, SessionContext},
     scalar::ScalarValue,
 };
+use datafusion_expr::{array_agg, array_distinct, btrim, character_length, lower, string_to_array};
+use ingester::errors::CreateFileSnafu;
 use once_cell::sync::Lazy;
-use parquet::arrow::ArrowWriter;
+use parquet::{arrow::ArrowWriter, file::properties::WriterProperties};
 use regex::Regex;
 
 use super::{
@@ -936,6 +938,7 @@ pub async fn merge_parquet_files(
     schema: Arc<Schema>,
     bloom_filter_fields: &[String],
     original_size: i64,
+    file_name_to_write: &str,
 ) -> Result<FileMeta> {
     // query data
     let runtime_env = create_runtime_env()?;
@@ -965,29 +968,91 @@ pub async fn merge_parquet_files(
     let batches_ref: Vec<&RecordBatch> = batches.iter().collect();
     let result = arrowJson::writer::record_batches_to_json_rows(&batches_ref).unwrap();
     let record = result.first().unwrap();
-    let file_meta = if record.is_empty() {
-        FileMeta::default()
+
+    let (file_meta, num_records) = if record.is_empty() {
+        (FileMeta::default(), 0)
     } else {
-        FileMeta {
-            min_ts: record["min_ts"].as_i64().unwrap(),
-            max_ts: record["max_ts"].as_i64().unwrap(),
-            records: record["num_records"].as_i64().unwrap(),
-            original_size,
-            compressed_size: 0,
-        }
+        let num_records = record["num_records"].as_i64().unwrap();
+        (
+            FileMeta {
+                min_ts: record["min_ts"].as_i64().unwrap(),
+                max_ts: record["max_ts"].as_i64().unwrap(),
+                records: num_records,
+                original_size,
+                compressed_size: 0,
+            },
+            num_records,
+        )
     };
 
+    ctx.register_udf(super::doc_id_udf::doc_id_udf_impl().clone());
     // get all sorted data
     let query_sql = format!(
-        "SELECT tbl.*, doc_id(_timestamp) as docid FROM tbl order by {} DESC",
+        "SELECT tbl.*, generate_doc_ids(_timestamp) as docid FROM tbl order by {} DESC",
         CONFIG.common.column_timestamp
     );
 
     let df = ctx.sql(&query_sql).await?;
+
+    // df.clone().select_columns(&["docid", "log"])?.show_limit(100).await?;
+
+    log::info!("Successfully created the doc-id");
     let schema: Schema = df.schema().into();
     let schema = Arc::new(schema);
-    let batches = df.collect().await?;
 
+    {
+        // Prepare the index table - Begin
+        // ctx.register_table("_tbl_raw_data", df.clone().into_view())?;
+        // let index_df = ctx
+        //     .sql(r#"select docid, string_to_array(lower(log),' ') as terms from _tbl_raw_data"#)
+        //     .await?;
+
+        let split_arr = string_to_array(lower(col("log")), lit(" "), lit(ScalarValue::Null));
+        let index_df = df
+            .clone()
+            .with_column("terms", split_arr)?
+            .unnest_column("terms")?
+            .with_column("terms", btrim(vec![col("terms"), lit("[],\"\\/:")]))?
+            .with_column_renamed("terms", "term")?
+            .aggregate(
+                vec![col("term")],
+                vec![array_agg(col("docid")).alias("docids")],
+            )?
+            .with_column("character_len", character_length(col("term")))?
+            .filter(col("character_len").gt(lit(3)))?
+            .with_column("docids", array_distinct(col("docids")))?
+            .select_columns(&["term", "docids"])?;
+
+        // let plan = index_df.create_physical_plan().await?;
+        // let props = WriterProperties::builder()
+        //     .set_compression(parquet::basic::Compression::ZSTD(Default::default()))
+        //     .build();
+        // let idx_file_name = file_name_to_write.replace(".parquet", ".idx.parquet");
+        let idx_file_name = file_name_to_write.replace(".parquet", ".idx.json");
+        log::error!("[INGESTER:JOB] index_df collect started");
+        let record_batches = index_df.execute_stream().await?;
+        log::error!("[INGESTER:JOB] index_df collect done");
+
+        let record_batches = record_batches.iter().collect::<Vec<&RecordBatch>>();
+        log::error!("[INGESTER:JOB] record_batches collect done");
+        
+        let json_rows =
+            datafusion::arrow::json::writer::record_batches_to_json_rows(&record_batches).unwrap();
+        log::error!("[INGESTER:JOB] json_rows_done");
+
+        let mut f = OpenOptions::new()
+            .create(true)
+            .write(true)
+            .append(true)
+            .open(idx_file_name)
+            .unwrap();
+        serde_json::to_writer(&mut f, &json_rows).unwrap();
+        // ctx.write_json(plan, idx_file_name).await?;
+        // ctx.deregister_table("_tbl_raw_data")?;
+        // Prepare the index table - End
+    }
+
+    let batches = df.collect().await?;
     let mut writer = new_parquet_writer(buf, &schema, bloom_filter_fields, &file_meta);
     for batch in batches {
         writer.write(&batch)?;
@@ -1067,7 +1132,6 @@ async fn register_udf(ctx: &mut SessionContext, _org_id: &str) {
     ctx.register_udf(super::regexp_udf::REGEX_NOT_MATCH_UDF.clone());
     ctx.register_udf(super::time_range_udf::TIME_RANGE_UDF.clone());
     ctx.register_udf(super::date_format_udf::DATE_FORMAT_UDF.clone());
-    ctx.register_udf(super::doc_id_udf::DOC_ID_UDF.clone());
 
     {
         let udf_list = get_all_transform(_org_id).await;

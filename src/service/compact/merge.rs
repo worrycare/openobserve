@@ -445,12 +445,15 @@ async fn merge_files(
     }
 
     let mut buf = Vec::new();
+    let id = ider::generate();
+    let new_file_key = format!("{prefix}/{id}{}", FILE_EXT_PARQUET);
     let mut new_file_meta = datafusion::exec::merge_parquet_files(
         tmp_dir.name(),
         &mut buf,
         schema,
         &bloom_filter_fields,
         new_file_size,
+        &new_file_key,
     )
     .await?;
     new_file_meta.original_size = new_file_size;
@@ -459,11 +462,8 @@ async fn merge_files(
         return Err(anyhow::anyhow!("merge_parquet_files error: records is 0"));
     }
 
-    let id = ider::generate();
-    let new_file_key = format!("{prefix}/{id}{}", FILE_EXT_PARQUET);
-
     log::info!(
-        "[COMPACT] merge file succeeded, {} files into a new file: {}, orginal_size: {}, compressed_size: {}",
+        "[COMPACT] merge file succeeded, {} files into a new file: {} , orginal_size: {}, compressed_size: {}",
         retain_file_list.len(),
         new_file_key,
         new_file_meta.original_size,

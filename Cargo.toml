@@ -176,6 +176,7 @@ xxhash-rust = { version = "0.8", features = ["xxh3"] }
 zstd = "0.13"
 config = { path = "src/config" }
 ingester = { path = "src/ingester" }
+stop-words = "0.8.0"
 
 [build-dependencies]
 chrono = { version = "0.4", default-features = false, features = ["clock"] }
