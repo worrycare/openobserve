@@ -29,19 +29,19 @@ use config::{
     utils::parquet::{read_metadata_from_bytes, read_metadata_from_file},
     FxIndexMap, CONFIG,
 };
-use datafusion::{datasource::file_format::parquet::ParquetFormat, execution::context::SessionContext};
 use parquet::arrow::ParquetRecordBatchStreamBuilder;
 use tokio::{sync::Semaphore, task::JoinHandle, time};
 
 use crate::{
     common::{
-        infra::{cache, cluster, storage, wal}, meta::search::SearchType, utils::{
+        infra::{cache, cluster, storage, wal},
+        utils::{
             asynchronism::file::{get_file_contents, get_file_meta},
             file::scan_files,
-        }
+        },
     },
     service::{
-        db, schema::schema_evolution, search::datafusion::exec::{create_runtime_env, create_session_config, merge_parquet_files}, stream,
+        db, schema::schema_evolution, search::datafusion::exec::merge_parquet_files, stream,
     },
 };
 
@@ -355,12 +355,16 @@ async fn merge_files(
     let bloom_filter_fields =
         stream::get_stream_setting_bloom_filter_fields(latest_schema).unwrap();
     let mut buf = Vec::new();
+    let new_file_key =
+        super::generate_storage_file_name(&org_id, stream_type, &stream_name, &file_name);
+
     let mut new_file_meta = merge_parquet_files(
         tmp_dir.name(),
         &mut buf,
         Arc::new(file_schema.unwrap()),
         &bloom_filter_fields,
         new_file_size,
+        &new_file_key,
     )
     .await?;
     new_file_meta.original_size = new_file_size;
@@ -369,10 +373,8 @@ async fn merge_files(
         return Err(anyhow::anyhow!("merge_parquet_files error: records is 0"));
     }
 
-    let new_file_key =
-        super::generate_storage_file_name(&org_id, stream_type, &stream_name, &file_name);
     log::info!(
-        "[INGESTER:JOB] merge file succeeded, {} files into a new file: {}, orginal_size: {}, compressed_size: {}",
+        "[INGESTER:JOB] merge file succeeded, {} files into a new file: {} , orginal_size: {}, compressed_size: {}",
         retain_file_list.len(),
         new_file_key,
         new_file_meta.original_size,
@@ -380,24 +382,25 @@ async fn merge_files(
     );
 
     // Now we generate the index file based on the newly created file.
-    
-    let runtime_env = create_runtime_env()?;
-    let session_config = create_session_config(&SearchType::Normal)?;
-    let ctx = SessionContext::new_with_config_rt(session_config, Arc::new(runtime_env));
 
-    // Configure listing options
-    let file_format = ParquetFormat::default();
-    let listing_options = ListingOptions::new(Arc::new(file_format))
-        .with_file_extension(FileType::PARQUET.get_ext())
-        .with_target_partitions(CONFIG.limit.cpu_num);
-    let prefix = ListingTableUrl::parse(format!("tmpfs:///{session_id}/"))?;
-    let config = ListingTableConfig::new(prefix)
-        .with_listing_options(listing_options)
-        .with_schema(schema);
+    // let runtime_env = create_runtime_env()?;
+    // let session_config = create_session_config(&SearchType::Normal)?;
+    // let ctx = SessionContext::new_with_config_rt(session_config, Arc::new(runtime_env));
 
-    let table = ListingTable::try_new(config)?;
-    ctx.register_table("tbl", Arc::new(table))?;
+    // // Configure listing options
+    // let file_format = ParquetFormat::default();
+    // let listing_options = ListingOptions::new(Arc::new(file_format))
+    //     .with_file_extension(FileType::PARQUET.get_ext())
+    //     .with_target_partitions(CONFIG.limit.cpu_num);
+    // let prefix = ListingTableUrl::parse(format!("tmpfs:///{session_id}/"))?;
+    // let config = ListingTableConfig::new(prefix)
+    //     .with_listing_options(listing_options)
+    //     .with_schema(schema);
 
+    // let table = ListingTable::try_new(config)?;
+    // ctx.register_("tbl", Arc::new(table))?;
+
+    // ctx.register_batch(table_name, batch)
     // End of index generation
     // upload file
     match storage::put(&new_file_key, buf.into()).await {
