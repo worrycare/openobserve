@@ -22,6 +22,7 @@ use std::{
 };
 
 use arrow_schema::Schema;
+use bytes::Bytes;
 use chrono::{Duration, Utc};
 use config::{
     meta::stream::{FileKey, FileMeta, StreamType},
@@ -29,12 +30,16 @@ use config::{
     utils::parquet::{read_metadata_from_bytes, read_metadata_from_file},
     FxIndexMap, CONFIG,
 };
-use parquet::arrow::ParquetRecordBatchStreamBuilder;
+use datafusion::{datasource::MemTable, prelude::*, scalar::ScalarValue};
+use parquet::arrow::{
+    arrow_reader::ParquetRecordBatchReaderBuilder, ParquetRecordBatchStreamBuilder,
+};
 use tokio::{sync::Semaphore, task::JoinHandle, time};
 
 use crate::{
     common::{
         infra::{cache, cluster, storage, wal},
+        meta::stream::StreamParams,
         utils::{
             asynchronism::file::{get_file_contents, get_file_meta},
             file::scan_files,
@@ -358,13 +363,12 @@ async fn merge_files(
     let new_file_key =
         super::generate_storage_file_name(&org_id, stream_type, &stream_name, &file_name);
 
-    let mut new_file_meta = merge_parquet_files(
+    let (mut new_file_meta, new_file_schema) = merge_parquet_files(
         tmp_dir.name(),
         &mut buf,
         Arc::new(file_schema.unwrap()),
         &bloom_filter_fields,
         new_file_size,
-        &new_file_key,
     )
     .await?;
     new_file_meta.original_size = new_file_size;
@@ -381,32 +385,63 @@ async fn merge_files(
         new_file_meta.compressed_size,
     );
 
-    // Now we generate the index file based on the newly created file.
-
-    // let runtime_env = create_runtime_env()?;
-    // let session_config = create_session_config(&SearchType::Normal)?;
-    // let ctx = SessionContext::new_with_config_rt(session_config, Arc::new(runtime_env));
-
-    // // Configure listing options
-    // let file_format = ParquetFormat::default();
-    // let listing_options = ListingOptions::new(Arc::new(file_format))
-    //     .with_file_extension(FileType::PARQUET.get_ext())
-    //     .with_target_partitions(CONFIG.limit.cpu_num);
-    // let prefix = ListingTableUrl::parse(format!("tmpfs:///{session_id}/"))?;
-    // let config = ListingTableConfig::new(prefix)
-    //     .with_listing_options(listing_options)
-    //     .with_schema(schema);
-
-    // let table = ListingTable::try_new(config)?;
-    // ctx.register_("tbl", Arc::new(table))?;
-
-    // ctx.register_batch(table_name, batch)
-    // End of index generation
-    // upload file
-    match storage::put(&new_file_key, buf.into()).await {
-        Ok(_) => Ok((new_file_key, new_file_meta, retain_file_list)),
+    let buf = Bytes::from(buf);
+    let response = match storage::put(&new_file_key, buf.clone()).await {
+        Ok(_) => Ok((new_file_key.clone(), new_file_meta, retain_file_list)),
         Err(e) => Err(e),
+    };
+
+    {
+        let reader = ParquetRecordBatchReaderBuilder::try_new(buf)
+            .unwrap()
+            .build()
+            .unwrap();
+
+        let batches = reader.collect::<Result<Vec<_>, _>>().unwrap();
+        let ctx = SessionContext::new();
+        let provider = MemTable::try_new(new_file_schema, vec![batches])?;
+        ctx.register_table("_tbl_raw_data", Arc::new(provider))?;
+
+        let split_arr = string_to_array(lower(col("log")), lit(" "), lit(ScalarValue::Null));
+        let index_df = ctx.table("_tbl_raw_data").await?;
+
+        let index_df = index_df
+            .with_column("terms", split_arr)?
+            .unnest_column("terms")?
+            .with_column("terms", btrim(vec![col("terms"), lit("[],\"\\/:")]))?
+            .with_column_renamed("terms", "term")?
+            .aggregate(
+                vec![col("term")],
+                vec![array_agg(col("docid")).alias("docids")],
+            )?
+            .with_column("character_len", character_length(col("term")))?
+            .filter(col("character_len").gt(lit(3)))?
+            .with_column("docids", array_distinct(col("docids")))?
+            .with_column("filename", lit(&new_file_key))?
+            .select_columns(&["term", "filename", "docids"])?;
+
+        log::error!("[INGESTER:JOB] index_df collect started");
+        let record_batches = index_df.collect().await?;
+        log::error!("[INGESTER:JOB] index_df collect done");
+
+        log::error!("[INGESTER:JOB] record_batches collect done");
+
+        use crate::service::ingestion::index_writer::write_file_arrow;
+
+        write_file_arrow(
+            record_batches,
+            0,
+            &&StreamParams {
+                org_id: org_id.to_string().into(),
+                stream_name: stream_name.to_string().into(),
+                stream_type,
+            },
+        )
+        .await;
+        log::error!("[INGESTER:JOB] json_rows_done");
     }
+
+    response
 }
 
 async fn upload_file(

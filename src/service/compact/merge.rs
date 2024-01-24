@@ -15,8 +15,17 @@
 
 use std::{collections::HashMap, io::Write, sync::Arc};
 
-use ::datafusion::{arrow::datatypes::Schema, common::FileType, error::DataFusionError};
+use ::datafusion::{
+    arrow::datatypes::Schema,
+    common::FileType,
+    datasource::MemTable,
+    error::DataFusionError,
+    prelude::{cast, col, lit, Expr, SessionContext},
+    scalar::ScalarValue,
+};
 use ahash::AHashMap;
+use arrow::record_batch::RecordBatch;
+use bytes::Bytes;
 use chrono::{DateTime, Datelike, Duration, TimeZone, Timelike, Utc};
 use config::{
     ider,
@@ -25,12 +34,14 @@ use config::{
     utils::parquet::parse_file_key_columns,
     CONFIG, FILE_EXT_PARQUET,
 };
+use datafusion_expr::{array_agg, array_distinct, btrim, character_length, lower, string_to_array};
+use parquet::arrow::arrow_reader::{ArrowReaderBuilder, ParquetRecordBatchReaderBuilder};
 use tokio::{sync::Semaphore, task::JoinHandle};
 
 use crate::{
     common::{
         infra::{cache, file_list as infra_file_list, storage},
-        meta::stream::{PartitionTimeLevel, StreamStats},
+        meta::stream::{PartitionTimeLevel, StreamParams, StreamStats},
         utils::json,
     },
     service::{db, file_list, search::datafusion, stream},
@@ -447,13 +458,12 @@ async fn merge_files(
     let mut buf = Vec::new();
     let id = ider::generate();
     let new_file_key = format!("{prefix}/{id}{}", FILE_EXT_PARQUET);
-    let mut new_file_meta = datafusion::exec::merge_parquet_files(
+    let (mut new_file_meta, _) = datafusion::exec::merge_parquet_files(
         tmp_dir.name(),
         &mut buf,
         schema,
         &bloom_filter_fields,
         new_file_size,
-        &new_file_key,
     )
     .await?;
     new_file_meta.original_size = new_file_size;
@@ -470,7 +480,6 @@ async fn merge_files(
         new_file_meta.compressed_size,
     );
 
-    // upload file
     match storage::put(&new_file_key, buf.into()).await {
         Ok(_) => Ok((new_file_key, new_file_meta, retain_file_list)),
         Err(e) => Err(e),
