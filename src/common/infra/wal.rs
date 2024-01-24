@@ -16,6 +16,8 @@
 use std::{path::Path, sync::Arc};
 
 use ahash::HashMap;
+use arrow::{ipc::writer::StreamWriter, record_batch::RecordBatch};
+use arrow_schema::Schema;
 use chrono::{DateTime, Datelike, TimeZone, Utc};
 use config::{ider, meta::stream::StreamType, metrics, CONFIG, FILE_EXT_JSON};
 use once_cell::sync::Lazy;
@@ -42,12 +44,14 @@ struct Manager {
 
 pub struct RwFile {
     file: Option<RwLock<File>>,
+    arrow_file: Option<RwLock<StreamWriter<std::fs::File>>>,
     org_id: String,
     stream_name: String,
     stream_type: StreamType,
     dir: String,
     name: String,
     expired: i64,
+    use_arrow: bool,
 }
 
 pub async fn init() -> Result<(), anyhow::Error> {
@@ -63,7 +67,19 @@ pub async fn get_or_create(
     key: &str,
 ) -> Arc<RwFile> {
     MANAGER
-        .get_or_create(thread_id, stream, partition_time_level, key)
+        .get_or_create(thread_id, stream, partition_time_level, key, None)
+        .await
+}
+
+pub async fn get_or_create_arrow(
+    thread_id: usize,
+    stream: StreamParams,
+    partition_time_level: Option<PartitionTimeLevel>,
+    key: &str,
+    schema: Option<Schema>,
+) -> Arc<RwFile> {
+    MANAGER
+        .get_or_create(thread_id, stream, partition_time_level, key, schema)
         .await
 }
 
@@ -139,6 +155,7 @@ impl Manager {
         stream: StreamParams,
         partition_time_level: Option<PartitionTimeLevel>,
         key: &str,
+        schema: Option<Schema>,
     ) -> Arc<RwFile> {
         let stream_type = stream.stream_type;
         let full_key = format!(
@@ -149,7 +166,8 @@ impl Manager {
         if let Some(f) = data.get(&full_key) {
             return f.clone();
         }
-        let file = Arc::new(RwFile::new(thread_id, stream, partition_time_level, key).await);
+        let file =
+            Arc::new(RwFile::new(thread_id, stream, partition_time_level, key, schema).await);
         if !stream_type.eq(&StreamType::EnrichmentTables) {
             data.insert(full_key, file.clone());
         };
@@ -162,11 +180,12 @@ impl Manager {
         stream: StreamParams,
         partition_time_level: Option<PartitionTimeLevel>,
         key: &str,
+        schema: Option<Schema>,
     ) -> Arc<RwFile> {
         if let Some(file) = self.get(thread_id, stream.clone(), key).await {
             file
         } else {
-            self.create(thread_id, stream, partition_time_level, key)
+            self.create(thread_id, stream, partition_time_level, key, schema)
                 .await
         }
     }
@@ -194,6 +213,7 @@ impl RwFile {
         stream: StreamParams,
         partition_time_level: Option<PartitionTimeLevel>,
         key: &str,
+        schema: Option<Schema>,
     ) -> RwFile {
         let mut dir_path = format!(
             "{}files/{}/{}/{}/",
@@ -211,13 +231,28 @@ impl RwFile {
             .await
             .unwrap();
 
-        let f = OpenOptions::new()
-            .create(true)
-            .append(true)
-            .open(&file_path)
-            .await
-            .unwrap_or_else(|e| panic!("open wal file [{file_path}] error: {e}"));
-        let file = Some(RwLock::new(f));
+        let use_arrow = schema.is_some();
+
+        let (file, arrow_file) = if use_arrow {
+            let file_path = format!("{dir_path}{file_name}");
+            let file = std::fs::OpenOptions::new()
+                .write(true)
+                .create(true)
+                .append(true)
+                .open(file_path)
+                .unwrap();
+            let writer = StreamWriter::try_new(file, &schema.unwrap()).unwrap();
+
+            (None, Some(RwLock::new(writer)))
+        } else {
+            let f = OpenOptions::new()
+                .create(true)
+                .append(true)
+                .open(&file_path)
+                .await
+                .unwrap_or_else(|e| panic!("open wal file [{file_path}] error: {e}"));
+            (Some(RwLock::new(f)), None)
+        };
 
         let time_now: DateTime<Utc> = Utc::now();
         let level_duration = partition_time_level.unwrap_or_default().duration();
@@ -247,12 +282,14 @@ impl RwFile {
 
         RwFile {
             file,
+            arrow_file,
             org_id: stream.org_id.to_string(),
             stream_name: stream.stream_name.to_string(),
             stream_type: stream.stream_type,
             dir: dir_path,
             name: file_name,
             expired: ttl,
+            use_arrow,
         }
     }
 
@@ -276,6 +313,16 @@ impl RwFile {
             .unwrap();
     }
 
+    pub async fn write_arrow(&self, data: RecordBatch) {
+        self.arrow_file
+            .as_ref()
+            .unwrap()
+            .write()
+            .await
+            .write(&data)
+            .unwrap()
+    }
+
     #[inline]
     pub async fn read(&self) -> Result<Vec<u8>, std::io::Error> {
         get_file_contents(&self.full_name()).await
@@ -283,27 +330,41 @@ impl RwFile {
 
     #[inline]
     pub async fn sync(&self) {
-        self.file
-            .as_ref()
-            .unwrap()
-            .write()
-            .await
-            .sync_all()
-            .await
-            .unwrap()
+        if !self.use_arrow {
+            self.file
+                .as_ref()
+                .unwrap()
+                .write()
+                .await
+                .sync_all()
+                .await
+                .unwrap()
+        };
     }
 
     #[inline]
     pub async fn size(&self) -> i64 {
-        self.file
-            .as_ref()
-            .unwrap()
-            .read()
-            .await
-            .metadata()
-            .await
-            .unwrap()
-            .len() as i64
+        if self.use_arrow {
+            self.arrow_file
+                .as_ref()
+                .unwrap()
+                .read()
+                .await
+                .get_ref()
+                .metadata()
+                .unwrap()
+                .len() as i64
+        } else {
+            self.file
+                .as_ref()
+                .unwrap()
+                .read()
+                .await
+                .metadata()
+                .await
+                .unwrap()
+                .len() as i64
+        }
     }
 
     #[inline]
@@ -379,7 +440,7 @@ mod tests {
         let stream_type = StreamType::Logs;
         let stream = StreamParams::new(org_id, stream_name, stream_type);
         let key = "test_key";
-        let file = RwFile::new(thread_id, stream, None, key).await;
+        let file = RwFile::new(thread_id, stream, None, key, None).await;
         let data = "test_data".to_string().into_bytes();
         file.write(&data).await;
         assert_eq!(file.read().await.unwrap(), data);
