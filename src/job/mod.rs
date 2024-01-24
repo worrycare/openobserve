@@ -176,6 +176,10 @@ pub async fn init() -> Result<(), anyhow::Error> {
         if let Err(e) = std::fs::create_dir_all(&CONFIG.common.data_wal_dir) {
             log::error!("Failed to create wal dir: {}", e);
         }
+
+        if let Err(e) = std::fs::create_dir_all(&CONFIG.common.data_idx_dir) {
+            log::error!("Failed to create wal dir: {}", e);
+        }
         // clean empty sub dirs
         _ = clean_empty_dirs(&CONFIG.common.data_wal_dir);
     }

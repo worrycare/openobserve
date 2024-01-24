@@ -19,7 +19,7 @@ use ahash::HashMap;
 use arrow::{ipc::writer::StreamWriter, record_batch::RecordBatch};
 use arrow_schema::Schema;
 use chrono::{DateTime, Datelike, TimeZone, Utc};
-use config::{ider, meta::stream::StreamType, metrics, CONFIG, FILE_EXT_JSON};
+use config::{ider, meta::stream::StreamType, metrics, CONFIG, FILE_EXT_ARROW, FILE_EXT_JSON};
 use once_cell::sync::Lazy;
 use tokio::{
     fs::{create_dir_all, File, OpenOptions},
@@ -234,7 +234,11 @@ impl RwFile {
             dir_path = dir_path.replace(file_list_prefix, "/file_list/");
         }
         let id = ider::generate();
-        let file_name = format!("{thread_id}/{key}/{id}{}", FILE_EXT_JSON);
+        let file_name = if use_arrow {
+            format!("{thread_id}/{key}/{id}{}", FILE_EXT_ARROW)
+        } else {
+            format!("{thread_id}/{key}/{id}{}", FILE_EXT_JSON)
+        };
         let file_path = format!("{dir_path}{file_name}");
         create_dir_all(Path::new(&file_path).parent().unwrap())
             .await
