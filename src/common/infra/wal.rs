@@ -215,10 +215,19 @@ impl RwFile {
         key: &str,
         schema: Option<Schema>,
     ) -> RwFile {
-        let mut dir_path = format!(
-            "{}files/{}/{}/{}/",
-            &CONFIG.common.data_wal_dir, stream.org_id, stream.stream_type, stream.stream_name
-        );
+        let use_arrow = schema.is_some();
+
+        let mut dir_path = if use_arrow {
+            format!(
+                "{}files/{}/{}/{}/",
+                &CONFIG.common.data_idx_dir, stream.org_id, stream.stream_type, stream.stream_name
+            )
+        } else {
+            format!(
+                "{}files/{}/{}/{}/",
+                &CONFIG.common.data_wal_dir, stream.org_id, stream.stream_type, stream.stream_name
+            )
+        };
         // Hack for file_list
         let file_list_prefix = "/files//file_list//";
         if dir_path.contains(file_list_prefix) {
@@ -230,8 +239,6 @@ impl RwFile {
         create_dir_all(Path::new(&file_path).parent().unwrap())
             .await
             .unwrap();
-
-        let use_arrow = schema.is_some();
 
         let (file, arrow_file) = if use_arrow {
             let file_path = format!("{dir_path}{file_name}");
@@ -313,6 +320,7 @@ impl RwFile {
             .unwrap();
     }
 
+    #[inline]
     pub async fn write_arrow(&self, data: RecordBatch) {
         self.arrow_file
             .as_ref()
