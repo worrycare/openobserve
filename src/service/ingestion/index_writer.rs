@@ -17,17 +17,19 @@ use arrow::record_batch::RecordBatch;
 
 use crate::common::{infra::wal::get_or_create_arrow, meta::stream::StreamParams};
 
-pub async fn write_file_arrow(buf: RecordBatch, thread_id: usize, stream: &StreamParams) {
-    let rw_file = get_or_create_arrow(
-        thread_id,
-        stream.clone(),
-        None,
-        "",
-        Some(buf.schema().as_ref().clone()),
-    )
-    .await;
+pub async fn write_file_arrow(buf: Vec<RecordBatch>, thread_id: usize, stream: &StreamParams) {
+    for batch in buf {
+        let rw_file = get_or_create_arrow(
+            thread_id,
+            stream.clone(),
+            None,
+            "",
+            Some(batch.schema().as_ref().clone()),
+        )
+        .await;
 
-    rw_file.write_arrow(buf).await;
+        rw_file.write_arrow(batch).await;
+    }
 }
 
 #[cfg(test)]
@@ -63,7 +65,7 @@ mod tests {
         )
         .unwrap();
         write_file_arrow(
-            batch,
+            vec![batch],
             0,
             &StreamParams {
                 org_id: "org".into(),
