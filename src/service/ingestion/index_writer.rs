@@ -29,3 +29,48 @@ pub async fn write_file_arrow(buf: RecordBatch, thread_id: usize, stream: &Strea
 
     rw_file.write_arrow(buf).await;
 }
+
+#[cfg(test)]
+mod tests {
+
+    use std::sync::Arc;
+
+    use chrono::Utc;
+    use datafusion::arrow::{
+        array::{Int64Array, StringArray},
+        datatypes::{DataType, Field, Schema},
+        record_batch::RecordBatch,
+    };
+
+    use super::*;
+
+    #[actix_web::test]
+    async fn test_write_file_arrow() {
+        let data_time = Utc::now().timestamp_millis();
+        // define a schema.
+        let schema = Arc::new(Schema::new(vec![
+            Field::new("log", DataType::Utf8, false),
+            Field::new("time", DataType::Int64, false),
+        ]));
+
+        // define data.
+        let batch = RecordBatch::try_new(
+            schema.clone(),
+            vec![
+                Arc::new(StringArray::from(vec!["a"])),
+                Arc::new(Int64Array::from(vec![data_time])),
+            ],
+        )
+        .unwrap();
+        write_file_arrow(
+            batch,
+            0,
+            &StreamParams {
+                org_id: "org".into(),
+                stream_name: "stream".into(),
+                stream_type: "logs".into(),
+            },
+        )
+        .await;
+    }
+}
