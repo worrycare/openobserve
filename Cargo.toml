@@ -176,6 +176,7 @@ zstd = "0.13"
 config = { path = "src/config" }
 ingester = { path = "src/ingester" }
 stop-words = "0.8.0"
+bitvec = { version = "1.0.1", features = ["serde"] }
 
 [build-dependencies]
 chrono = { version = "0.4", default-features = false, features = ["clock"] }
