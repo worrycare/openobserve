@@ -236,6 +236,17 @@ async fn search_in_cluster(mut req: cluster_rpc::SearchRequest) -> Result<search
     let partition_time_level =
         stream::unwrap_partition_time_level(stream_settings.partition_time_level, stream_type);
 
+    // Check if inverted index is enabled or user has fired match_all query
+    let inverted_index_enabled = stream_settings.inverted_index_search_keys.len() > 0;
+    // if inverted_index_enabled || ()
+    // TODO(ansrivas)
+    // Check if the stream-settings contain the FTS-field or is it a case of match_alls
+    // Split the index file list here, so that we can get the file list of each partition
+
+    // let file_list_index = get_file_list(&session_id, &meta, stream_type, partition_time_level).await;
+
+
+
     let file_list = get_file_list(&session_id, &meta, stream_type, partition_time_level).await;
     let mut partition_files = None;
     let mut file_num = file_list.len();
