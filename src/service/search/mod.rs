@@ -21,6 +21,7 @@ use std::{
 
 use ::datafusion::arrow::{datatypes::Schema, ipc, json as arrow_json, record_batch::RecordBatch};
 use ahash::AHashMap as HashMap;
+use async_recursion::async_recursion;
 use chrono::Duration;
 use config::{
     ider,
@@ -191,6 +192,7 @@ async fn get_file_list(
     files
 }
 
+#[async_recursion]
 #[tracing::instrument(
     name = "service:search:cluster",
     skip(req),
@@ -236,18 +238,41 @@ async fn search_in_cluster(mut req: cluster_rpc::SearchRequest) -> Result<search
     let partition_time_level =
         stream::unwrap_partition_time_level(stream_settings.partition_time_level, stream_type);
 
-    // Check if inverted index is enabled or user has fired match_all query
-    let inverted_index_enabled = stream_settings.inverted_index_search_keys.len() > 0;
-    // if inverted_index_enabled || ()
-    // TODO(ansrivas)
-    // Check if the stream-settings contain the FTS-field or is it a case of match_alls
-    // Split the index file list here, so that we can get the file list of each partition
+    let mut idx_file_list = vec![];
+    let file_list = if !meta.fts_terms.is_empty() {
+        let mut idx_req = req.clone();
 
-    // let file_list_index = get_file_list(&session_id, &meta, stream_type, partition_time_level).await;
+        let terms = meta
+            .fts_terms
+            .iter()
+            .map(|t| format!("'{}'", t))
+            .collect::<Vec<_>>()
+            .join(",");
 
+        idx_req.stream_type = StreamType::Index.to_string();
 
+        idx_req.query.as_mut().unwrap().sql = format!(
+            "select filename, docids from {} where term in ({})",
+            meta.stream_name, terms
+        );
+        let idx_resp: search::Response = search_in_cluster(idx_req).await?;
+        println!("idx_resp: {:?}", idx_resp);
 
-    let file_list = get_file_list(&session_id, &meta, stream_type, partition_time_level).await;
+        for hit in idx_resp.hits.iter() {
+            let filename = hit.get("filename").unwrap().as_str().unwrap();
+            let file_meta = file_list::get_file_meta(filename).await.unwrap();
+            idx_file_list.push(FileKey {
+                key: filename.to_string(),
+                meta: file_meta,
+                deleted: false,
+            });
+        }
+        idx_file_list
+    } else {
+        get_file_list(&session_id, &meta, stream_type, partition_time_level).await
+    };
+
+    // let file_list = get_file_list(&session_id, &meta, stream_type, partition_time_level).await;
     let mut partition_files = None;
     let mut file_num = file_list.len();
     let offset = match QueryPartitionStrategy::from(&CONFIG.common.feature_query_partition_strategy)

@@ -70,8 +70,6 @@ pub async fn move_files_to_storage() -> Result<(), anyhow::Error> {
     let pattern = format!("{}files/", &CONFIG.common.data_idx_dir);
     let files = scan_files(&pattern, "arrow");
 
-    println!("files: {:?}", files);
-
     // use multiple threads to upload files
     let mut tasks = Vec::new();
     let semaphore = std::sync::Arc::new(Semaphore::new(CONFIG.limit.file_move_thread_num));
@@ -183,12 +181,12 @@ pub async fn move_files_to_storage() -> Result<(), anyhow::Error> {
 
             // metrics
             let columns = key.split('/').collect::<Vec<&str>>();
-           /*  if columns[0] == "files" {
-                metrics::INGEST_WAL_USED_BYTES
-                    .with_label_values(&[columns[1], columns[3], columns[2]])
-                    .sub(meta.original_size);
-                report_compression_stats(meta.into(), &org_id, &stream_name, stream_type).await;
-            } */
+            //  if columns[0] == "files" {
+            // metrics::INGEST_WAL_USED_BYTES
+            // .with_label_values(&[columns[1], columns[3], columns[2]])
+            // .sub(meta.original_size);
+            // report_compression_stats(meta.into(), &org_id, &stream_name, stream_type).await;
+            // }
 
             drop(permit);
             Ok(())
@@ -227,9 +225,9 @@ async fn upload_file(
     }
 
     // metrics
-  /*   metrics::INGEST_WAL_READ_BYTES
-        .with_label_values(&[org_id, stream_name, stream_type.to_string().as_str()])
-        .inc_by(file_size); */
+    //   metrics::INGEST_WAL_READ_BYTES
+    // .with_label_values(&[org_id, stream_name, stream_type.to_string().as_str()])
+    // .inc_by(file_size);
 
     let mut batches = vec![];
 

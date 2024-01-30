@@ -14,7 +14,7 @@
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 use std::{
-    collections::HashMap,
+    collections::{HashMap, HashSet},
     fmt::{Display, Formatter},
 };
 
@@ -80,6 +80,7 @@ pub struct Sql {
     pub query_context: String,
     pub uses_zo_fn: bool,
     pub query_fn: Option<String>,
+    pub fts_terms: Vec<String>,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -377,6 +378,7 @@ impl Sql {
             }
         }
         // fetch fts fields
+        let mut fts_terms = HashSet::new();
         let fts_fields = get_stream_setting_fts_fields(&schema).unwrap();
         let match_all_fields = if !fts_fields.is_empty() {
             fts_fields.iter().map(|v| v.to_lowercase()).collect()
@@ -402,6 +404,7 @@ impl Sql {
                     func = "ILIKE";
                 }
                 fulltext_search.push(format!("\"{}\" {} '%{}%'", field.name(), func, item.1));
+                fts_terms.insert(item.1.clone());
             }
             if fulltext_search.is_empty() {
                 return Err(Error::ErrorCode(ErrorCodes::FullTextSearchFieldNotFound));
@@ -443,6 +446,7 @@ impl Sql {
                         cap.get(0).unwrap().as_str(),
                         &format!("\"{field}\" {re_fn} '%{value}%'"),
                     );
+                    fts_terms.insert(value.to_string());
                 }
             }
         }
@@ -610,6 +614,7 @@ impl Sql {
             query_context: req_query.query_context.clone(),
             uses_zo_fn: req_query.uses_zo_fn,
             query_fn,
+            fts_terms: fts_terms.into_iter().collect(),
         };
 
         // calculate all needs fields
