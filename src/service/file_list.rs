@@ -260,15 +260,15 @@ async fn query_inner(
         (time_min, time_max),
     )
     .await?;
-    let mut file_keys = Vec::with_capacity(files.len());
-    for file in files {
-        file_keys.push(FileKey {
-            key: file.0,
-            meta: file.1,
+
+    Ok(files
+        .into_iter()
+        .map(|(filename, filemeta)| FileKey {
+            key: filename,
+            meta: filemeta,
             deleted: false,
-        });
-    }
-    Ok(file_keys)
+        })
+        .collect())
 }
 
 #[inline]

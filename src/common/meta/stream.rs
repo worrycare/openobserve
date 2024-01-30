@@ -203,6 +203,9 @@ pub struct StreamSettings {
     pub bloom_filter_fields: Vec<String>,
     #[serde(default)]
     pub data_retention: i64,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    #[serde(default)]
+    pub inverted_index_search_keys: Vec<String>,
 }
 
 impl Serialize for StreamSettings {
@@ -268,12 +271,25 @@ impl From<&str> for StreamSettings {
             data_retention = v.as_i64().unwrap();
         };
 
+        let mut inverted_index_search_keys =
+            if let Some(value) = settings.get("inverted_index_search_keys") {
+                value
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .map(|item| item.as_str().unwrap().to_string())
+                    .collect()
+            } else {
+                Vec::new()
+            };
+
         Self {
             partition_keys,
             partition_time_level,
             full_text_search_keys,
             bloom_filter_fields,
             data_retention,
+            inverted_index_search_keys,
         }
     }
 }

@@ -918,9 +918,9 @@ pub async fn convert_parquet_file(
     let file_meta = FileMeta::default();
     let mut writer = new_parquet_writer(buf, &schema, bloom_filter_fields, &file_meta);
     for batch in batches {
-        writer.write(&batch)?;
+        writer.write(&batch).await?;
     }
-    writer.close().unwrap();
+    writer.close().await?;
     ctx.deregister_table("tbl")?;
     drop(ctx);
 
@@ -1045,9 +1045,9 @@ pub async fn merge_parquet_files(
     let batches = df.collect().await?;
     let mut writer = new_parquet_writer(buf, &schema, bloom_filter_fields, &file_meta);
     for batch in batches {
-        writer.write(&batch)?;
+        writer.write(&batch).await?;
     }
-    writer.close().unwrap();
+    writer.close().await?;
     ctx.deregister_table("tbl")?;
     drop(ctx);
 
@@ -1058,6 +1058,10 @@ pub fn create_session_config(search_type: &SearchType) -> Result<SessionConfig> 
     let mut config = SessionConfig::from_env()?
         .with_batch_size(PARQUET_BATCH_SIZE)
         .with_information_schema(true);
+    config = config.set_bool(
+        "datafusion.execution.listing_table_ignore_subdirectory",
+        false,
+    );
     if search_type == &SearchType::Normal {
         config = config.set_bool("datafusion.execution.parquet.pushdown_filters", true);
         config = config.set_bool("datafusion.execution.parquet.reorder_filters", true);
