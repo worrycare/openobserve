@@ -39,14 +39,15 @@ use tokio::{sync::Semaphore, task::JoinHandle, time};
 use crate::{
     common::{
         infra::{cache, cluster, storage, wal},
-        meta::stream::StreamParams,
+        meta::stream::{PartitionTimeLevel, StreamParams},
         utils::{
             asynchronism::file::{get_file_contents, get_file_meta},
             file::scan_files,
         },
     },
     service::{
-        db, schema::schema_evolution, search::datafusion::exec::merge_parquet_files, stream,
+        db, ingestion::get_wal_time_key, schema::schema_evolution,
+        search::datafusion::exec::merge_parquet_files, stream,
     },
 };
 
@@ -371,6 +372,8 @@ async fn merge_files(
         new_file_size,
     )
     .await?;
+
+    let min_ts = new_file_meta.min_ts;
     new_file_meta.original_size = new_file_size;
     new_file_meta.compressed_size = buf.len() as i64;
     if new_file_meta.records == 0 {
@@ -391,7 +394,7 @@ async fn merge_files(
         Err(e) => Err(e),
     };
 
-    {
+    if response.is_ok() {
         let reader = ParquetRecordBatchReaderBuilder::try_new(buf)
             .unwrap()
             .build()
@@ -412,21 +415,33 @@ async fn merge_files(
             .with_column_renamed("terms", "term")?
             .aggregate(
                 vec![col("term")],
-                vec![array_agg(col("docid")).alias("docids")],
+                vec![
+                    array_agg(col("docid")).alias("docids"),
+                    min(col("_timestamp")).alias("_timestamp"),
+                ],
             )?
             .with_column("character_len", character_length(col("term")))?
             .filter(col("character_len").gt(lit(3)))?
             .with_column("docids", array_distinct(col("docids")))?
             .with_column("filename", lit(&new_file_key))?
-            .select_columns(&["term", "filename", "docids"])?;
+            .select_columns(&["term", "filename", "docids", "_timestamp"])?;
 
         log::error!("[INGESTER:JOB] index_df collect started");
         let record_batches = index_df.collect().await?;
+        println!("new file name: {:?}", new_file_key);
         log::error!("[INGESTER:JOB] index_df collect done");
 
         log::error!("[INGESTER:JOB] record_batches collect done");
 
         use crate::service::ingestion::index_writer::write_file_arrow;
+
+        let hour_key = get_wal_time_key(
+            min_ts,
+            &vec![],
+            PartitionTimeLevel::Hourly,
+            &serde_json::Map::new(),
+            None,
+        );
 
         write_file_arrow(
             record_batches,
@@ -434,8 +449,9 @@ async fn merge_files(
             &&StreamParams {
                 org_id: org_id.to_string().into(),
                 stream_name: stream_name.to_string().into(),
-                stream_type,
+                stream_type: StreamType::Index
             },
+            &hour_key,
         )
         .await;
         log::error!("[INGESTER:JOB] json_rows_done");

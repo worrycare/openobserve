@@ -750,6 +750,7 @@ pub async fn add_stream_schema(
             full_text_search_keys: vec![],
             bloom_filter_fields: vec![],
             data_retention: 0,
+            inverted_index_search_keys: vec![],
         };
         metadata.insert(
             "settings".to_string(),

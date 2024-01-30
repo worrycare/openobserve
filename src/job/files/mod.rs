@@ -18,6 +18,7 @@ use config::{ider, meta::stream::StreamType, CONFIG, FILE_EXT_PARQUET};
 use crate::common::infra::cluster;
 
 pub mod broadcast;
+pub mod idx;
 pub mod json;
 pub mod parquet;
 

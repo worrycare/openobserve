@@ -13,17 +13,57 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-use arrow::record_batch::RecordBatch;
+use std::collections::HashMap;
 
-use crate::common::{infra::wal::get_or_create_arrow, meta::stream::StreamParams};
+use arrow::{datatypes::Schema, record_batch::RecordBatch};
+use chrono::Utc;
+use config::meta::stream::StreamType;
 
-pub async fn write_file_arrow(buf: Vec<RecordBatch>, thread_id: usize, stream: &StreamParams) {
+use crate::{
+    common::{
+        infra::wal::get_or_create_arrow,
+        meta::stream::{PartitionTimeLevel, StreamParams},
+    },
+    service::{db, schema::stream_schema_exists},
+};
+
+pub async fn write_file_arrow(
+    buf: Vec<RecordBatch>,
+    thread_id: usize,
+    stream: &StreamParams,
+    hour_key: &str,
+) {
+    let mut schema_map: HashMap<String, Schema> = HashMap::new();
+    let schema_chk = stream_schema_exists(
+        stream.org_id.as_str(),
+        stream.stream_name.as_str(),
+        StreamType::Index,
+        &mut schema_map,
+    )
+    .await;
+
+    let mut i = 0;
     for batch in buf {
+        if i == 0 {
+            if !schema_chk.has_fields {
+                db::schema::set(
+                    stream.org_id.as_str(),
+                    stream.stream_name.as_str(),
+                    StreamType::Index,
+                    batch.schema().as_ref(),
+                    Some(Utc::now().timestamp_micros()),
+                    false,
+                )
+                .await
+                .unwrap();
+            };
+        }
+        i += 1;
         let rw_file = get_or_create_arrow(
             thread_id,
             stream.clone(),
-            None,
-            "",
+            Some(PartitionTimeLevel::Hourly),
+            hour_key,
             Some(batch.schema().as_ref().clone()),
         )
         .await;
@@ -72,6 +112,7 @@ mod tests {
                 stream_name: "stream".into(),
                 stream_type: "logs".into(),
             },
+            "",
         )
         .await;
     }

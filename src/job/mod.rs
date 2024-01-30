@@ -22,6 +22,7 @@ use crate::{
         meta::{organization::DEFAULT_ORG, user::UserRequest},
         utils::file::clean_empty_dirs,
     },
+    job::files::idx,
     service::{compact::stats::update_stats_from_file_list, db, users},
 };
 
@@ -191,6 +192,7 @@ pub async fn init() -> Result<(), anyhow::Error> {
     tokio::task::spawn(async move { metrics::run().await });
     tokio::task::spawn(async move { prom::run().await });
     tokio::task::spawn(async move { alert_manager::run().await });
+    tokio::task::spawn(async move { idx::run().await });
 
     #[cfg(feature = "enterprise")]
     o2_enterprise::enterprise::openfga::authorizer::init_open_fga().await;
