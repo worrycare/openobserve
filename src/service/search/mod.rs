@@ -270,12 +270,13 @@ async fn search_in_cluster(mut req: cluster_rpc::SearchRequest) -> Result<search
                 .map(|v| v.as_str().unwrap().to_string())
                 .collect::<HashSet<String>>()
             {
-                let file_meta = file_list::get_file_meta(&filename).await.unwrap();
-                idx_file_list.push(FileKey {
-                    key: filename.to_string(),
-                    meta: file_meta,
-                    deleted: false,
-                });
+                if let Ok(file_meta) = file_list::get_file_meta(&filename).await {
+                    idx_file_list.push(FileKey {
+                        key: filename.to_string(),
+                        meta: file_meta,
+                        deleted: false,
+                    });
+                }
             }
         }
         idx_file_list
