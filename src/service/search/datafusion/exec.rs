@@ -987,60 +987,15 @@ pub async fn merge_parquet_files(
     ctx.register_udf(super::doc_id_udf::doc_id_udf_impl().clone());
     // get all sorted data
     let query_sql = format!(
-        "SELECT tbl.*, generate_doc_ids(_timestamp) as docid FROM tbl order by {} DESC",
+        "SELECT * FROM tbl order by {} DESC",
         CONFIG.common.column_timestamp
     );
 
     let df = ctx.sql(&query_sql).await?;
 
-    // df.clone().select_columns(&["docid", "log"])?.show_limit(100).await?;
-
     log::info!("Successfully created the doc-id");
     let schema: Schema = df.schema().into();
     let schema = Arc::new(schema);
-
-    // {
-    //     // Prepare the index table - Begin
-    //     // ctx.register_table("_tbl_raw_data", df.clone().into_view())?;
-    //     // let index_df = ctx
-    //     //     .sql(r#"select docid, string_to_array(lower(log),' ') as terms from
-    // _tbl_raw_data"#)     //     .await?;
-
-    //     let split_arr = string_to_array(lower(col("log")), lit(" "), lit(ScalarValue::Null));
-    //     let index_df = df
-    //         .clone()
-    //         .with_column("terms", split_arr)?
-    //         .unnest_column("terms")?
-    //         .with_column("terms", btrim(vec![col("terms"), lit("[],\"\\/:")]))?
-    //         .with_column_renamed("terms", "term")?
-    //         .aggregate(
-    //             vec![col("term")],
-    //             vec![array_agg(col("docid")).alias("docids")],
-    //         )?
-    //         .with_column("character_len", character_length(col("term")))?
-    //         .filter(col("character_len").gt(lit(3)))?
-    //         .with_column("docids", array_distinct(col("docids")))?
-    //         .select_columns(&["term", "docids"])?;
-
-    //     // let plan = index_df.create_physical_plan().await?;
-    //     // let props = WriterProperties::builder()
-    //     //     .set_compression(parquet::basic::Compression::ZSTD(Default::default()))
-    //     //     .build();
-    //     // let idx_file_name = file_name_to_write.replace(".parquet", ".idx.parquet");
-    //     let idx_file_name = file_name_to_write.replace(".parquet", ".idx.json");
-    //     log::error!("[INGESTER:JOB] index_df collect started");
-    //     let record_batches = index_df.collect().await?;
-    //     log::error!("[INGESTER:JOB] index_df collect done");
-
-    //     let record_batches = record_batches.iter().collect::<Vec<&RecordBatch>>();
-    //     log::error!("[INGESTER:JOB] record_batches collect done");
-
-    //     use crate::service::ingestion::index_writer::write_file_arrow;
-
-    //     write_file_arrow(record_batches, )
-    //     log::error!("[INGESTER:JOB] json_rows_done");
-
-    // }
 
     let batches = df.collect().await?;
     let mut writer = new_parquet_writer(buf, &schema, bloom_filter_fields, &file_meta);

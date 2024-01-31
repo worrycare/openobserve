@@ -15,6 +15,7 @@
 
 use std::{
     cmp::{max, min},
+    collections::HashSet,
     io::Cursor,
     sync::Arc,
 };
@@ -28,6 +29,7 @@ use config::{
     meta::stream::{FileKey, QueryPartitionStrategy, StreamType},
     CONFIG,
 };
+use itertools::Itertools;
 use once_cell::sync::Lazy;
 use tokio::sync::Mutex;
 use tonic::{codec::CompressionEncoding, metadata::MetadataValue, transport::Channel, Request};
@@ -245,32 +247,45 @@ async fn search_in_cluster(mut req: cluster_rpc::SearchRequest) -> Result<search
         let terms = meta
             .fts_terms
             .iter()
-            .map(|t| format!("'{}'", t))
+            .map(|t| format!("'{}'", t.to_lowercase()))
             .collect::<Vec<_>>()
             .join(",");
 
         idx_req.stream_type = StreamType::Index.to_string();
 
         idx_req.query.as_mut().unwrap().sql = format!(
-            "select filename, docids from {} where term in ({})",
+            "select filenames from {} where term in ({})",
             meta.stream_name, terms
         );
         let idx_resp: search::Response = search_in_cluster(idx_req).await?;
         println!("idx_resp: {:?}", idx_resp);
 
         for hit in idx_resp.hits.iter() {
-            let filename = hit.get("filename").unwrap().as_str().unwrap();
-            let file_meta = file_list::get_file_meta(filename).await.unwrap();
-            idx_file_list.push(FileKey {
-                key: filename.to_string(),
-                meta: file_meta,
-                deleted: false,
-            });
+            for filename in hit
+                .get("filenames")
+                .unwrap()
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|v| v.as_str().unwrap().to_string())
+                .collect::<HashSet<String>>()
+            {
+                let file_meta = file_list::get_file_meta(&filename).await.unwrap();
+                idx_file_list.push(FileKey {
+                    key: filename.to_string(),
+                    meta: file_meta,
+                    deleted: false,
+                });
+            }
         }
         idx_file_list
     } else {
         get_file_list(&session_id, &meta, stream_type, partition_time_level).await
     };
+
+    log::error!("req: {:?}", req);
+    log::error!("file_list.len(): {}", file_list.len());
+    log::error!("file_list {:?}", file_list);
 
     // let file_list = get_file_list(&session_id, &meta, stream_type, partition_time_level).await;
     let mut partition_files = None;

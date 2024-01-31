@@ -27,10 +27,10 @@ pub async fn run() -> Result<(), anyhow::Error> {
         return Ok(());
     }
 
-   /*  tokio::task::spawn(async move { run_merge().await });
-    tokio::task::spawn(async move { run_delete().await });
-    tokio::task::spawn(async move { run_delete_files().await });
-    tokio::task::spawn(async move { run_sync_to_db().await }); */
+    //  tokio::task::spawn(async move { run_merge().await });
+    // tokio::task::spawn(async move { run_delete().await });
+    // tokio::task::spawn(async move { run_delete_files().await });
+    // tokio::task::spawn(async move { run_sync_to_db().await });
 
     Ok(())
 }

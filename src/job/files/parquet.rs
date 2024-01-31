@@ -21,7 +21,7 @@ use std::{
     time::UNIX_EPOCH,
 };
 
-use arrow_schema::Schema;
+use arrow_schema::{Schema, SchemaRef};
 use bytes::Bytes;
 use chrono::{Duration, Utc};
 use config::{
@@ -354,6 +354,11 @@ async fn merge_files(
             &file_name,
         )
         .await?;
+        log::error!(
+            "[INGESTER:JOB] only one file, upload directly: {} -> {}",
+            &file.key,
+            new_file_name
+        );
         return Ok((new_file_name, file_meta, retain_file_list));
     }
 
@@ -395,66 +400,17 @@ async fn merge_files(
     };
 
     if response.is_ok() {
-        let reader = ParquetRecordBatchReaderBuilder::try_new(buf)
-            .unwrap()
-            .build()
-            .unwrap();
-
-        let batches = reader.collect::<Result<Vec<_>, _>>().unwrap();
-        let ctx = SessionContext::new();
-        let provider = MemTable::try_new(new_file_schema, vec![batches])?;
-        ctx.register_table("_tbl_raw_data", Arc::new(provider))?;
-
-        let split_arr = string_to_array(lower(col("log")), lit(" "), lit(ScalarValue::Null));
-        let index_df = ctx.table("_tbl_raw_data").await?;
-
-        let index_df = index_df
-            .with_column("terms", split_arr)?
-            .unnest_column("terms")?
-            .with_column("terms", btrim(vec![col("terms"), lit("[],\"\\/:")]))?
-            .with_column_renamed("terms", "term")?
-            .aggregate(
-                vec![col("term")],
-                vec![
-                    array_agg(col("docid")).alias("docids"),
-                    min(col("_timestamp")).alias("_timestamp"),
-                ],
-            )?
-            .with_column("character_len", character_length(col("term")))?
-            .filter(col("character_len").gt(lit(3)))?
-            .with_column("docids", array_distinct(col("docids")))?
-            .with_column("filename", lit(&new_file_key))?
-            .select_columns(&["term", "filename", "docids", "_timestamp"])?;
-
-        log::error!("[INGESTER:JOB] index_df collect started");
-        let record_batches = index_df.collect().await?;
-        println!("new file name: {:?}", new_file_key);
-        log::error!("[INGESTER:JOB] index_df collect done");
-
-        log::error!("[INGESTER:JOB] record_batches collect done");
-
-        use crate::service::ingestion::index_writer::write_file_arrow;
-
-        let hour_key = get_wal_time_key(
+        create_index_file(
+            buf,
+            new_file_key.clone(),
             min_ts,
-            &vec![],
-            PartitionTimeLevel::Hourly,
-            &serde_json::Map::new(),
-            None,
-        );
-
-        write_file_arrow(
-            record_batches,
-            0,
-            &&StreamParams {
-                org_id: org_id.to_string().into(),
-                stream_name: stream_name.to_string().into(),
-                stream_type: StreamType::Index
-            },
-            &hour_key,
+            &org_id,
+            &stream_name,
+            new_file_schema,
         )
-        .await;
-        log::error!("[INGESTER:JOB] json_rows_done");
+        .await?;
+    } else {
+        log::error!("[INGESTER:JOB] json_rows_error, unable to write file.");
     }
 
     response
@@ -499,23 +455,26 @@ async fn upload_file(
         .as_ref()
         .clone()
         .with_metadata(std::collections::HashMap::new());
-
-    schema_evolution(
-        org_id,
-        stream_name,
-        stream_type,
-        Arc::new(inferred_schema),
-        file_meta.min_ts,
-    )
-    .await;
+    let min_ts = file_meta.min_ts;
+    let schema = Arc::new(inferred_schema);
+    schema_evolution(org_id, stream_name, stream_type, schema.clone(), min_ts).await;
 
     let new_file_name =
         super::generate_storage_file_name(org_id, stream_type, stream_name, file_name);
     drop(file);
     let file_name = new_file_name.to_owned();
-    match storage::put(&new_file_name, buf_parquet).await {
+    match storage::put(&new_file_name, buf_parquet.clone()).await {
         Ok(_) => {
             log::info!("[INGESTER:JOB] File upload succeeded: {}", file_name);
+            create_index_file(
+                buf_parquet,
+                file_name.clone(),
+                min_ts,
+                &org_id,
+                &stream_name,
+                schema,
+            )
+            .await?;
             Ok((file_name, file_meta))
         }
         Err(err) => {
@@ -523,4 +482,75 @@ async fn upload_file(
             Err(anyhow::anyhow!(err))
         }
     }
+}
+
+async fn create_index_file(
+    buf: Bytes,
+    new_file_key: String,
+    min_ts: i64,
+    org_id: &str,
+    stream_name: &str,
+    schema: SchemaRef,
+) -> Result<(), anyhow::Error> {
+    let reader = ParquetRecordBatchReaderBuilder::try_new(buf)
+        .unwrap()
+        .build()
+        .unwrap();
+
+    let batches = reader.collect::<Result<Vec<_>, _>>().unwrap();
+    let ctx = SessionContext::new();
+    let provider = MemTable::try_new(schema, vec![batches])?;
+    ctx.register_table("_tbl_raw_data", Arc::new(provider))?;
+
+    let split_arr = string_to_array(lower(col("log")), lit(" "), lit(ScalarValue::Null));
+    let index_df = ctx.table("_tbl_raw_data").await?;
+
+    let index_df = index_df
+        .with_column("terms", split_arr)?
+        .unnest_column("terms")?
+        .with_column("terms", btrim(vec![col("terms"), lit("[],\"\\/:")]))?
+        .with_column_renamed("terms", "term")?
+        .with_column("filename", lit(&new_file_key))?
+        .aggregate(
+            vec![col("term")],
+            vec![
+                array_agg(col("filename")).alias("filenames"),
+                min(col("_timestamp")).alias("_timestamp"),
+            ],
+        )?
+        .with_column("character_len", character_length(col("term")))?
+        .filter(col("character_len").gt(lit(3)))?
+        .with_column("filenames", array_distinct(col("filenames")))?
+        .select_columns(&["term", "filenames", "_timestamp"])?;
+
+    log::error!("[INGESTER:JOB] index_df collect started");
+    let record_batches = index_df.collect().await?;
+    log::error!("[NEW FILE NAME:] {:?}", new_file_key);
+    log::error!("[INGESTER:JOB] index_df collect done");
+
+    log::error!("[INGESTER:JOB] record_batches collect done");
+
+    use crate::service::ingestion::index_writer::write_file_arrow;
+
+    let hour_key = get_wal_time_key(
+        min_ts,
+        &vec![],
+        PartitionTimeLevel::Hourly,
+        &serde_json::Map::new(),
+        None,
+    );
+
+    write_file_arrow(
+        record_batches,
+        0,
+        &&StreamParams {
+            org_id: org_id.to_string().into(),
+            stream_name: stream_name.to_string().into(),
+            stream_type: StreamType::Index,
+        },
+        &hour_key,
+    )
+    .await;
+    log::error!("[INGESTER:JOB] json_rows_done");
+    Ok(())
 }

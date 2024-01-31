@@ -127,7 +127,6 @@ mod tests {
 
         let df = ctx
             .sql("select raw.*, generate_doc_ids(log) as doc_ids from raw")
-            // .sql("select raw.*, generate_doc_ids as doc_ids from raw")
             .await
             .unwrap();
         df.clone().show().await.unwrap();
