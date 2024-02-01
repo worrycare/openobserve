@@ -258,8 +258,6 @@ async fn search_in_cluster(mut req: cluster_rpc::SearchRequest) -> Result<search
             meta.stream_name, terms
         );
         let idx_resp: search::Response = search_in_cluster(idx_req).await?;
-        println!("idx_resp: {:?}", idx_resp);
-
         for hit in idx_resp.hits.iter() {
             for filename in hit
                 .get("filenames")
@@ -279,14 +277,13 @@ async fn search_in_cluster(mut req: cluster_rpc::SearchRequest) -> Result<search
                 }
             }
         }
+        log::error!("idx_file_list len: {}\n", idx_file_list.len(),);
         idx_file_list
     } else {
         get_file_list(&session_id, &meta, stream_type, partition_time_level).await
     };
 
-    log::error!("req: {:?}", req);
-    log::error!("file_list.len(): {}", file_list.len());
-    // log::error!("file_list {:?}", file_list);
+    // log::error!("req: {:?}", req);
 
     // let file_list = get_file_list(&session_id, &meta, stream_type, partition_time_level).await;
     let mut partition_files = None;
