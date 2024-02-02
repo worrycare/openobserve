@@ -505,8 +505,8 @@ async fn create_index_file(
     let split_arr = string_to_array(lower(col("log")), lit(" "), lit(ScalarValue::Null));
     let index_df = ctx.table("_tbl_raw_data").await?;
 
-    let file_name_without_prefix =
-        new_file_key.trim_start_matches("files/default/logs/quickstart1/");
+    let prefix_to_remove = format!("files/{}/logs/{}/", org_id, stream_name);
+    let file_name_without_prefix = new_file_key.trim_start_matches(&prefix_to_remove);
     let index_df = index_df
         .with_column("terms", split_arr)?
         .unnest_column("terms")?

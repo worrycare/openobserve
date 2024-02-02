@@ -247,31 +247,31 @@ async fn search_in_cluster(mut req: cluster_rpc::SearchRequest) -> Result<search
         let terms = meta
             .fts_terms
             .iter()
+            .flat_map(|t| t.split_whitespace().collect::<Vec<_>>())
             .map(|t| format!("'{}'", t.to_lowercase()))
-            .collect::<Vec<_>>()
-            .join(",");
+            .collect::<Vec<_>>();
 
+        // Join the transformed terms with ", " and surround them with parentheses
+        let terms = format!("({})", terms.join(", "));
+        log::error!("FTS terms: {}", terms);
         idx_req.stream_type = StreamType::Index.to_string();
 
-        idx_req.query.as_mut().unwrap().sql = format!(
-            "select filename from {} where term in ({})",
+        let query = format!(
+            // "select distinct filename from {} where term ~* '({})'",
+            "select filename from {} where term in {}",
             meta.stream_name, terms
         );
+        log::error!("FTS query: {}", query);
+        idx_req.query.as_mut().unwrap().sql = query;
         let idx_resp: search::Response = search_in_cluster(idx_req).await?;
         for hit in idx_resp.hits.iter() {
             let filename = hit.get("filename").unwrap().as_str().unwrap();
 
-            // for filename in hit
-            //     .get("filename")
-            //     .unwrap()
-            //     .as_str()
-            //     .unwrap()
-            // .iter()
-            // .map(|v| v.as_str().unwrap().to_string())
-            // .collect::<HashSet<String>>()
             {
-                let prefixed_filename =
-                    format!("files/default/logs/{}/{}", meta.stream_name, filename);
+                let prefixed_filename = format!(
+                    "files/{}/logs/{}/{}",
+                    meta.org_id, meta.stream_name, filename
+                );
                 if let Ok(file_meta) = file_list::get_file_meta(&prefixed_filename).await {
                     idx_file_list.push(FileKey {
                         key: prefixed_filename.to_string(),
