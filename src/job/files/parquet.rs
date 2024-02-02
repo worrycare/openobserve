@@ -505,24 +505,23 @@ async fn create_index_file(
     let split_arr = string_to_array(lower(col("log")), lit(" "), lit(ScalarValue::Null));
     let index_df = ctx.table("_tbl_raw_data").await?;
 
+    let file_name_without_prefix =
+        new_file_key.trim_start_matches("files/default/logs/quickstart1/");
     let index_df = index_df
         .with_column("terms", split_arr)?
         .unnest_column("terms")?
-        .with_column("terms", btrim(vec![col("terms"), lit("[],\"\\/:")]))?
         .with_column_renamed("terms", "term")?
-        .with_column("filename", lit(&new_file_key))?
+        .with_column("filename", lit(file_name_without_prefix))?
         .aggregate(
-            vec![col("term")],
-            vec![
-                array_agg(col("filename")).alias("filenames"),
-                min(col("_timestamp")).alias("_timestamp"),
-            ],
+            vec![col("term"), col("filename")],
+            vec![min(col("_timestamp")).alias("_timestamp")],
         )?
         .with_column("character_len", character_length(col("term")))?
-        .filter(col("character_len").gt(lit(3)))?
-        .with_column("filenames", array_distinct(col("filenames")))?
-        .select_columns(&["term", "filenames", "_timestamp"])?;
+        .filter(col("character_len").gt_eq(lit(3)))?
+        .with_column("term", btrim(vec![col("term"), lit("[],\"\\/:")]))?
+        .select_columns(&["term", "filename", "_timestamp"])?;
 
+    index_df.clone().show_limit(10).await.unwrap();
     log::error!("[INGESTER:JOB] index_df collect started");
     let record_batches = index_df.collect().await?;
     log::error!("[NEW FILE NAME:] {:?}", new_file_key);
