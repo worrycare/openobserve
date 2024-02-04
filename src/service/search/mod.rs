@@ -244,18 +244,20 @@ async fn search_in_cluster(mut req: cluster_rpc::SearchRequest) -> Result<search
     let file_list = if !meta.fts_terms.is_empty() {
         let mut idx_req = req.clone();
 
+        // Get all the unique terms which the user has searched.
         let terms = meta
             .fts_terms
             .iter()
             .flat_map(|t| t.split_whitespace().collect::<Vec<_>>())
             .map(|t| format!("'{}'", t.to_lowercase()))
-            .collect::<Vec<_>>();
+            .collect::<HashSet<String>>();
 
         // Join the transformed terms with ", " and surround them with parentheses
-        let terms = format!("({})", terms.join(", "));
+        let terms = format!("({})", terms.iter().join(", "));
         log::error!("FTS terms: {}", terms);
         idx_req.stream_type = StreamType::Index.to_string();
 
+        // TODO(ansrivas): distinct filename isn't supported.
         let query = format!(
             // "select distinct filename from {} where term ~* '({})'",
             "select filename from {} where term in {}",
@@ -264,21 +266,24 @@ async fn search_in_cluster(mut req: cluster_rpc::SearchRequest) -> Result<search
         log::error!("FTS query: {}", query);
         idx_req.query.as_mut().unwrap().sql = query;
         let idx_resp: search::Response = search_in_cluster(idx_req).await?;
-        for hit in idx_resp.hits.iter() {
-            let filename = hit.get("filename").unwrap().as_str().unwrap();
 
-            {
-                let prefixed_filename = format!(
-                    "files/{}/logs/{}/{}",
-                    meta.org_id, meta.stream_name, filename
-                );
-                if let Ok(file_meta) = file_list::get_file_meta(&prefixed_filename).await {
-                    idx_file_list.push(FileKey {
-                        key: prefixed_filename.to_string(),
-                        meta: file_meta,
-                        deleted: false,
-                    });
-                }
+        let unique_files = idx_resp
+            .hits
+            .iter()
+            .map(|hit| hit.get("filename").unwrap().as_str().unwrap())
+            .collect::<HashSet<_>>();
+
+        for filename in unique_files {
+            let prefixed_filename = format!(
+                "files/{}/logs/{}/{}",
+                meta.org_id, meta.stream_name, filename
+            );
+            if let Ok(file_meta) = file_list::get_file_meta(&prefixed_filename).await {
+                idx_file_list.push(FileKey {
+                    key: prefixed_filename.to_string(),
+                    meta: file_meta,
+                    deleted: false,
+                });
             }
         }
         log::error!("idx_file_list len: {}\n", idx_file_list.len(),);
@@ -287,9 +292,6 @@ async fn search_in_cluster(mut req: cluster_rpc::SearchRequest) -> Result<search
         get_file_list(&session_id, &meta, stream_type, partition_time_level).await
     };
 
-    // log::error!("req: {:?}", req);
-
-    // let file_list = get_file_list(&session_id, &meta, stream_type, partition_time_level).await;
     let mut partition_files = None;
     let mut file_num = file_list.len();
     let offset = match QueryPartitionStrategy::from(&CONFIG.common.feature_query_partition_strategy)

@@ -60,6 +60,11 @@ static RE_ONLY_FROM: Lazy<Regex> = Lazy::new(|| Regex::new(r"(?i) from[ ]+query"
 
 static RE_HISTOGRAM: Lazy<Regex> = Lazy::new(|| Regex::new(r"(?i)histogram\(([^\)]*)\)").unwrap());
 static RE_MATCH_ALL: Lazy<Regex> = Lazy::new(|| Regex::new(r"(?i)match_all\('([^']*)'\)").unwrap());
+static RE_MATCH_ALL_INDEXED: Lazy<Regex> =
+    Lazy::new(|| Regex::new(r"(?i)match_all_indexed\('([^']*)'\)").unwrap());
+static RE_MATCH_ALL_INDEXED_IGNORE_CASE: Lazy<Regex> =
+    Lazy::new(|| Regex::new(r"(?i)match_all_indexed_ignore_case\('([^']*)'\)").unwrap());
+
 static RE_MATCH_ALL_IGNORE_CASE: Lazy<Regex> =
     Lazy::new(|| Regex::new(r"(?i)match_all_ignore_case\('([^']*)'\)").unwrap());
 
@@ -363,6 +368,7 @@ impl Sql {
 
         // HACK full text search
         let mut fulltext = Vec::new();
+        let mut indexed_text = Vec::new();
         for token in &where_tokens {
             let tokens = split_sql_token_unwrap_brace(token);
             for token in &tokens {
@@ -374,6 +380,14 @@ impl Sql {
                 }
                 for cap in RE_MATCH_ALL_IGNORE_CASE.captures_iter(token) {
                     fulltext.push((cap[0].to_string(), cap[1].to_lowercase()));
+                }
+                for cap in RE_MATCH_ALL_INDEXED.captures_iter(token) {
+                    log::error!("*********** We are in match_all_indexed ****");
+                    indexed_text.push((cap[0].to_string(), cap[1].to_string()));
+                }
+                for cap in RE_MATCH_ALL_INDEXED_IGNORE_CASE.captures_iter(token) {
+                    log::error!("*********** We are in match_all_indexed_ignore_case ****");
+                    indexed_text.push((cap[0].to_string(), cap[1].to_lowercase()));
                 }
             }
         }
@@ -388,6 +402,32 @@ impl Sql {
                 .map(|v| v.to_string())
                 .collect::<String>()
         };
+
+        for item in indexed_text.iter() {
+            let mut indexed_search = Vec::new();
+            for field in &schema_fields {
+                if !CONFIG.common.feature_fulltext_on_all_fields
+                    && !match_all_fields.contains(&field.name().to_lowercase())
+                {
+                    continue;
+                }
+                if !field.data_type().eq(&DataType::Utf8) || field.name().starts_with('@') {
+                    continue;
+                }
+                let mut func = "LIKE";
+                if item.0.to_lowercase().contains("_ignore_case") {
+                    func = "ILIKE";
+                }
+                indexed_search.push(format!("\"{}\" {} '%{}%'", field.name(), func, item.1));
+                fts_terms.insert(item.1.clone());
+            }
+            if indexed_search.is_empty() {
+                return Err(Error::ErrorCode(ErrorCodes::FullTextSearchFieldNotFound));
+            }
+            let indexed_search = format!("({})", indexed_search.join(" OR "));
+            origin_sql = origin_sql.replace(item.0.as_str(), &indexed_search);
+        }
+
         for item in fulltext.iter() {
             let mut fulltext_search = Vec::new();
             for field in &schema_fields {
@@ -404,7 +444,6 @@ impl Sql {
                     func = "ILIKE";
                 }
                 fulltext_search.push(format!("\"{}\" {} '%{}%'", field.name(), func, item.1));
-                fts_terms.insert(item.1.clone());
             }
             if fulltext_search.is_empty() {
                 return Err(Error::ErrorCode(ErrorCodes::FullTextSearchFieldNotFound));

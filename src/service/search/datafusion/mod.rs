@@ -57,10 +57,18 @@ pub const REGEX_NOT_MATCH_UDF_NAME: &str = "re_not_match";
 /// The name of the udf which generates unique doc-id for a given row of data given to DataFusion.
 pub const DOC_ID_UDF_NAME: &str = "generate_doc_ids";
 
-pub const DEFAULT_FUNCTIONS: [ZoFunction; 6] = [
+pub const DEFAULT_FUNCTIONS: [ZoFunction; 8] = [
     ZoFunction {
         name: "match_all",
         text: "match_all('v')",
+    },
+    ZoFunction {
+        name: "match_all_indexed",
+        text: "match_all_indexed('v')",
+    },
+    ZoFunction {
+        name: "match_all_indexed_ignore_case",
+        text: "match_all_indexed_ignore_case('v')",
     },
     ZoFunction {
         name: "match_all_ignore_case",
