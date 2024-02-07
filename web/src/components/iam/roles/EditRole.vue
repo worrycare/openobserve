@@ -763,7 +763,8 @@ const getResourceEntities = (resource: Resource | Entity) => {
   const listEntitiesFnMap: {
     [key: string]: (resource: Resource | Entity) => Promise<any>;
   } = {
-    stream: getStreams,
+    stream: getStreamsTypes,
+    stream_type: getStreamsTypes,
     alert: getAlerts,
     template: getTemplates,
     destination: getDestinations,
@@ -949,27 +950,66 @@ const getAlerts = async () => {
   });
 };
 
-const getStreams = async () => {
-  const logs = await streamService.nameList(
-    store.state.selectedOrganization.identifier,
-    "logs",
-    false
-  );
-  const traces = await streamService.nameList(
-    store.state.selectedOrganization.identifier,
-    "traces",
-    false
-  );
-  const metrics = await streamService.nameList(
-    store.state.selectedOrganization.identifier,
-    "metrics",
-    false
-  );
+const getStreams = async (resource) => {
+  console.log(resource);
+  // const logs = await streamService.nameList(
+  //   store.state.selectedOrganization.identifier,
+  //   "logs",
+  //   false
+  // );
+  // const traces = await streamService.nameList(
+  //   store.state.selectedOrganization.identifier,
+  //   "traces",
+  //   false
+  // );
+  // const metrics = await streamService.nameList(
+  //   store.state.selectedOrganization.identifier,
+  //   "metrics",
+  //   false
+  // );
+
+  // updateResourceEntities(
+  //   "stream",
+  //   ["stream_type"],
+  //   [
+  //     ...logs.data.map((log: any) => log.name),
+  //     ...traces.data.map((trace: any) => trace.name),
+  //     ...metrics.data.map((metric: any) => metric.name),
+  //   ],
+  //   true
+  // );
+};
+
+const getStreamsTypes = async () => {
+  // const logs = await streamService.nameList(
+  //   store.state.selectedOrganization.identifier,
+  //   "logs",
+  //   false
+  // );
+  // const traces = await streamService.nameList(
+  //   store.state.selectedOrganization.identifier,
+  //   "traces",
+  //   false
+  // );
+  // const metrics = await streamService.nameList(
+  //   store.state.selectedOrganization.identifier,
+  //   "metrics",
+  //   false
+  // );
+
+  const streams = [
+    { stream_type: "logs", name: "Logs" },
+    { stream_type: "traces", name: "Traces" },
+    { stream_type: "metrics", name: "Metrics" },
+  ];
 
   updateResourceEntities(
     "stream",
-    ["stream_type", "name"],
-    [...logs.data.list, ...metrics.data.list, ...traces.data.list]
+    ["stream_type"],
+    streams,
+    true,
+    "name",
+    "stream_type"
   );
 
   return new Promise((resolve, reject) => {
@@ -1076,7 +1116,8 @@ const updateResourceEntities = (
   entityNameKeys: string[],
   data: any[],
   hasEntities: boolean = false,
-  displayNameKey?: string
+  displayNameKey?: string,
+  forceChildName?: string
 ) => {
   const resource: Resource | null | undefined = getResourceByName(
     permissionsState.permissions,
@@ -1139,7 +1180,9 @@ const updateResourceEntities = (
       has_entities: hasEntities,
       display_name: displayNameKey ? _entity[displayNameKey] : entityName,
       show: true,
-      childName: hasEntities ? resource.childs[0].resourceName : "",
+      childName: hasEntities
+        ? resource?.childs[0]?.resourceName || forceChildName
+        : "",
     });
   });
 
