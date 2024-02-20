@@ -287,6 +287,7 @@ async fn search_in_cluster(mut req: cluster_rpc::SearchRequest) -> Result<search
 
         idx_req.query.as_mut().unwrap().sql = query;
         idx_req.query.as_mut().unwrap().size = 10000;
+        idx_req.query.as_mut().unwrap().from = 0; // from 0 to get all the files, no pagination
         let idx_resp: search::Response = search_in_cluster(idx_req).await?;
 
         let unique_files = idx_resp
