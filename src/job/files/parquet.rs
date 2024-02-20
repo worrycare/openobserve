@@ -49,7 +49,10 @@ use parquet::arrow::{
 use tokio::{sync::Semaphore, task::JoinHandle, time};
 
 use crate::{
-    common::{infra::wal, meta::stream::StreamParams, utils::record_batch_ext::RecordBatchExt},
+    common::{
+        infra::wal, meta::stream::StreamParams,
+        utils::record_batch_parquet_ext::RecordBatchParquetExt,
+    },
     job::files::idx::write_to_disk,
     service::{
         db,

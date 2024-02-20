@@ -21,7 +21,7 @@ use super::stream::populate_file_meta;
 
 #[async_trait]
 /// Extension trait for `RecordBatch` providing additional functionality.
-pub trait RecordBatchExt {
+pub trait RecordBatchParquetExt {
     /// Converts the `RecordBatch` to a Parquet buffer asynchronously.
     ///
     /// # Arguments
@@ -61,7 +61,7 @@ pub trait RecordBatchExt {
 }
 
 #[async_trait]
-impl RecordBatchExt for Vec<RecordBatch> {
+impl RecordBatchParquetExt for Vec<RecordBatch> {
     async fn to_parquet_buf(
         &self,
         original_file_size: u64,
