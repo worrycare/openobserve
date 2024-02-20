@@ -278,7 +278,6 @@ async fn search_in_cluster(mut req: cluster_rpc::SearchRequest) -> Result<search
         log::warn!("searching in terms {:?}", terms);
         idx_req.stream_type = StreamType::Index.to_string();
 
-        // TODO(ansrivas): distinct filename isn't supported.
         let query = format!(
             "select file_name from {} where deleted is false and {}",
             meta.stream_name, search_condition
