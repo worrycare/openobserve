@@ -33,9 +33,7 @@ use config::{
     },
     FxIndexMap, CONFIG, SQL_FULL_TEXT_SEARCH_FIELDS,
 };
-use datafusion::{
-    datasource::MemTable, execution::context::SessionContext, prelude::*, scalar::ScalarValue,
-};
+use datafusion::{datasource::MemTable, execution::context::SessionContext, prelude::*};
 use infra::{cache, storage};
 use parquet::arrow::{
     arrow_reader::ParquetRecordBatchReaderBuilder, ParquetRecordBatchStreamBuilder,
@@ -48,7 +46,9 @@ use crate::{
     service::{
         db,
         ingestion::{get_wal_time_key, index_writer::write_file_arrow},
-        search::datafusion::exec::merge_parquet_files,
+        search::datafusion::{
+            exec::merge_parquet_files, string_to_array_v2_udf::STRING_TO_ARRAY_V2_UDF,
+        },
         stream::{self, get_stream_setting_fts_fields},
     },
 };
@@ -545,7 +545,11 @@ async fn prepare_index_record_batches(
         if !index_df.schema().has_column_with_unqualified_name(column) {
             continue;
         }
-        let split_arr = string_to_array(lower(col(column)), lit(" "), lit(ScalarValue::Null));
+
+        // let split_arr = string_to_array(lower(col(column)), lit(" "), lit(ScalarValue::Null));
+
+        let lower_case_expr = lower(col(column));
+        let split_arr = STRING_TO_ARRAY_V2_UDF.call(vec![lower_case_expr, lit(remove_chars)]);
 
         let record_batch = index_df
             .with_column("terms", split_arr)?
