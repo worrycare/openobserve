@@ -538,17 +538,20 @@ async fn prepare_index_record_batches(
     let prefix_to_remove = format!("files/{}/logs/{}/", org_id, stream_name);
     let file_name_without_prefix = new_file_key.trim_start_matches(&prefix_to_remove);
     let mut indexed_record_batches_to_merge = Vec::new();
+
+    let remove_chars = r#"[.,:;/||||'*#=*!@?#$&+^|~<>(){}\\]\s]"#;
     for column in columns_to_index.iter() {
         let index_df = ctx.table("_tbl_raw_data").await?;
         if !index_df.schema().has_column_with_unqualified_name(column) {
             continue;
         }
         let split_arr = string_to_array(lower(col(column)), lit(" "), lit(ScalarValue::Null));
+
         let record_batch = index_df
             .with_column("terms", split_arr)?
             .unnest_column("terms")?
             .with_column_renamed("terms", "term")?
-            .with_column("term", btrim(vec![col("term"), lit("'{},[]*\"\\/:")]))?
+            .with_column("term", btrim(vec![col("term"), lit(remove_chars)]))?
             .with_column("file_name", lit(file_name_without_prefix))?
             .aggregate(
                 vec![col("term"), col("file_name")],
