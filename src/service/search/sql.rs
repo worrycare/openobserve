@@ -411,6 +411,8 @@ impl Sql {
         };
 
         // Iterator for indexed texts only
+        //
+        let inverted_index_func = "ILIKE";
         for item in indexed_text.iter() {
             let mut indexed_search = Vec::new();
             for field in &schema_fields {
@@ -423,11 +425,13 @@ impl Sql {
                 if !field.data_type().eq(&DataType::Utf8) || field.name().starts_with('@') {
                     continue;
                 }
-                let mut func = "LIKE";
-                if item.0.to_lowercase().contains("_ignore_case") {
-                    func = "ILIKE";
-                }
-                indexed_search.push(format!("\"{}\" {} '%{}%'", field.name(), func, item.1));
+
+                indexed_search.push(format!(
+                    "\"{}\" {} '%{}%'",
+                    field.name(),
+                    inverted_index_func,
+                    item.1
+                ));
                 fts_terms.insert(item.1.clone());
             }
             if indexed_search.is_empty() {

@@ -548,7 +548,7 @@ async fn prepare_index_record_batches(
             .with_column("terms", split_arr)?
             .unnest_column("terms")?
             .with_column_renamed("terms", "term")?
-            .with_column("term", btrim(vec![col("term"), lit(",[]*\"\\/:")]))?
+            .with_column("term", btrim(vec![col("term"), lit("'{},[]*\"\\/:")]))?
             .with_column("file_name", lit(file_name_without_prefix))?
             .aggregate(
                 vec![col("term"), col("file_name")],
