@@ -539,7 +539,9 @@ async fn prepare_index_record_batches(
     let file_name_without_prefix = new_file_key.trim_start_matches(&prefix_to_remove);
     let mut indexed_record_batches_to_merge = Vec::new();
 
-    let remove_chars = r#"[.,:;/||||'*#=*!@?#$&+^|~<>(){}\\]\s]"#;
+    let split_chars = "!\"#$%&'()*+, -./:;<=>?@[\\]^_`{|}~";
+    let remove_chars_btrim = split_chars;
+
     for column in columns_to_index.iter() {
         let index_df = ctx.table("_tbl_raw_data").await?;
         if !index_df.schema().has_column_with_unqualified_name(column) {
@@ -549,13 +551,13 @@ async fn prepare_index_record_batches(
         // let split_arr = string_to_array(lower(col(column)), lit(" "), lit(ScalarValue::Null));
 
         let lower_case_expr = lower(col(column));
-        let split_arr = STRING_TO_ARRAY_V2_UDF.call(vec![lower_case_expr, lit(remove_chars)]);
+        let split_arr = STRING_TO_ARRAY_V2_UDF.call(vec![lower_case_expr, lit(split_chars)]);
 
         let record_batch = index_df
             .with_column("terms", split_arr)?
             .unnest_column("terms")?
             .with_column_renamed("terms", "term")?
-            .with_column("term", btrim(vec![col("term"), lit(remove_chars)]))?
+            .with_column("term", btrim(vec![col("term"), lit(remove_chars_btrim)]))?
             .with_column("file_name", lit(file_name_without_prefix))?
             .aggregate(
                 vec![col("term"), col("file_name")],
