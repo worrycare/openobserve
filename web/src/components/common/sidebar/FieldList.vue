@@ -16,205 +16,230 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 <template>
   <div class="column index-menu">
-    <div class="index-table q-mt-xs">
-      <q-table
-        data-test="log-search-index-list-fields-table"
-        :visible-columns="['name']"
-        :rows="fields"
-        row-key="name"
-        :filter="filterFieldValue"
-        :filter-method="filterFieldFn"
-        :pagination="{ rowsPerPage: 10000 }"
-        hide-header
-        hide-bottom
-        class="traces-field-table"
-        id="tracesFieldList"
+    <div class="index-table q-mt-xs" style="height: 300px">
+      <q-input
+        data-test="log-search-index-list-field-search-input "
+        v-model="filterFieldValue"
+        data-cy="index-field-search-input"
+        filled
+        borderless
+        dense
+        clearable
+        debounce="1"
+        :placeholder="t('search.searchField')"
       >
-        <template #body-cell-name="props">
-          <q-tr :props="props">
-            <q-td :props="props" class="field_list">
-              <!-- TODO OK : Repeated code make seperate component to display field  -->
-              <div
-                v-if="props.row.ftsKey || !props.row.showValues"
-                class="field-container flex content-center ellipsis q-pl-lg q-pr-sm"
-                :title="props.row.name"
+        <template #prepend>
+          <q-icon name="search" />
+        </template>
+      </q-input>
+      <div
+        style="height: calc(100% - 40px); overflow-y: auto; overflow-x: hidden"
+        class="field_list"
+      >
+        <div v-for="field in fields" :key="field.name">
+          <!-- TODO OK : Repeated code make seperate component to display field  -->
+          <div
+            v-if="field.ftsKey || !field.showValues"
+            class="field-container flex content-center ellipsis q-pl-lg q-pr-sm"
+            :title="field.name"
+            style="height: 25px"
+          >
+            <div class="field_label ellipsis">
+              {{ field.name }}
+            </div>
+            <div
+              class="field_overlay"
+              :style="{
+                background:
+                  store.state.theme === 'dark' ? '#414345' : '#d9d9d9',
+              }"
+            >
+              <template
+                v-for="fieldAction in (fieldActions as any[])"
+                :key="fieldAction.name"
               >
-                <div class="field_label ellipsis">
-                  {{ props.row.name }}
-                </div>
-                <div
-                  class="field_overlay"
-                  :style="{
-                    background:
-                      store.state.theme === 'dark' ? '#414345' : '#d9d9d9',
-                  }"
+                <template
+                  v-if="
+                    typeof fieldAction.show === 'function'
+                      ? fieldAction.show(field)
+                      : fieldAction.show
+                  "
                 >
                   <q-btn
-                    :icon="outlinedAdd"
-                    :data-test="`log-search-index-list-filter-${props.row.name}-field-btn`"
+                    :icon="fieldAction.icon"
+                    :data-test="`log-search-index-list-filter-${field.name}-field-btn`"
                     style="margin-right: 0.375rem"
                     size="0.4rem"
                     class="q-mr-sm"
-                    @click.stop="addSearchTerm(`${props.row.name}=''`)"
+                    @click.stop="addSearchTerm(`${field.name}=''`)"
                     round
                   />
-                </div>
-              </div>
-              <q-expansion-item
-                v-else
-                dense
-                switch-toggle-side
-                :label="props.row.name"
-                expand-icon-class="field-expansion-icon"
-                expand-icon="
+                </template>
+              </template>
+            </div>
+          </div>
+          <q-expansion-item
+            v-else
+            dense
+            switch-toggle-side
+            :label="field.name"
+            expand-icon-class="field-expansion-icon"
+            expand-icon="
                      expand_more
                   "
-                @before-show="(event: any) => openFilterCreator(event, props.row)"
+            @before-show="(event: any) => openFilterCreator(event, field)"
+          >
+            <template v-slot:header>
+              <div
+                style="height: 25px"
+                class="flex content-center ellipsis"
+                :title="field.name"
               >
-                <template v-slot:header>
-                  <div
-                    class="flex content-center ellipsis"
-                    :title="props.row.name"
+                <div class="field_label ellipsis">
+                  {{ field.name }}
+                </div>
+                <div class="field_overlay">
+                  <template
+                    v-for="fieldAction in (fieldActions as any[])"
+                    :key="fieldAction.name"
                   >
-                    <div class="field_label ellipsis">
-                      {{ props.row.name }}
-                    </div>
-                    <div class="field_overlay">
-                      <q-btn
-                        :data-test="`log-search-index-list-filter-${props.row.name}-field-btn`"
-                        :icon="outlinedAdd"
-                        style="margin-right: 0.375rem"
-                        size="0.4rem"
-                        class="q-mr-sm"
-                        @click.stop="addSearchTerm(`${props.row.name}=''`)"
-                        round
+                    <template
+                      v-if="
+                        typeof fieldAction.show === 'function'
+                          ? fieldAction.show(field)
+                          : fieldAction.show
+                      "
+                    >
+                      <q-icon
+                        :name="fieldAction.icon"
+                        :data-test="`log-search-index-list-filter-${field.name}-field-btn`"
+                        :style="{
+                          marginRight: '0.375rem',
+                          ...(fieldAction.rounded
+                            ? {
+                                border: '1px solid grey',
+                                borderRadius: '50%',
+                                display: 'flex',
+                                justifyContent: 'center',
+                                alignItems: 'center',
+                                padding: '2px',
+                                fontSize: '12px',
+                              }
+                            : {}),
+                        }"
+                        size="18px"
+                        class="q-mr-sm cursor-pointer"
+                        @click.stop="addSearchTerm(`${field.name}=''`)"
                       />
+                    </template>
+                  </template>
+                </div>
+              </div>
+            </template>
+            <q-card>
+              <q-card-section class="q-pl-md q-pr-xs q-py-xs">
+                <div class="filter-values-container">
+                  <div
+                    v-show="fieldValues[field.name]?.isLoading"
+                    class="q-pl-md q-py-xs"
+                    style="height: 60px"
+                  >
+                    <q-inner-loading
+                      size="xs"
+                      :showing="fieldValues[field.name]?.isLoading"
+                      label="Fetching values..."
+                      label-style="font-size: 1.1em"
+                    />
+                  </div>
+                  <div
+                    v-show="
+                      !fieldValues[field.name]?.values?.length &&
+                      !fieldValues[field.name]?.isLoading
+                    "
+                    class="q-pl-md q-py-xs text-subtitle2"
+                  >
+                    No values found
+                  </div>
+                  <div
+                    v-for="value in fieldValues[field.name]?.values || []"
+                    :key="value.key"
+                    class="flex"
+                    style="height: 25px"
+                  >
+                    <div
+                      class="flex row wrap justify-between"
+                      style="width: calc(100% - 46px); font-size: 12px"
+                    >
+                      <div
+                        :title="value.key"
+                        class="ellipsis q-pr-xs"
+                        style="width: calc(100% - 50px)"
+                      >
+                        {{ value.key }}
+                      </div>
+                      <div
+                        :title="value.count"
+                        class="ellipsis text-right q-pr-sm"
+                        style="width: 50px"
+                      >
+                        {{ value.count }}
+                      </div>
+                    </div>
+                    <div
+                      class="flex row"
+                      style="height: fit-content"
+                      :class="
+                        store.state.theme === 'dark'
+                          ? 'text-white'
+                          : 'text-black'
+                      "
+                    >
+                      <template
+                        v-for="fieldAction in (valueActions as any[])"
+                        :key="fieldAction.name"
+                      >
+                        <template
+                          v-if="
+                            typeof fieldAction.show === 'function'
+                              ? fieldAction.show(field)
+                              : fieldAction.show
+                          "
+                        >
+                          <q-icon
+                            :name="fieldAction.icon"
+                            :data-test="`log-search-index-list-filter-${field.name}-field-btn`"
+                            :style="{
+                              ...(fieldAction.rounded
+                                ? {
+                                    border: '1px solid grey',
+                                    borderRadius: '50%',
+                                    display: 'flex',
+                                    justifyContent: 'center',
+                                    alignItems: 'center',
+                                    padding: '3px',
+                                  }
+                                : {}),
+                            }"
+                            size="10px"
+                            class="q-mr-xs cursor-pointer"
+                            @click.stop="addSearchTerm(`${field.name}=''`)"
+                          />
+                        </template>
+                      </template>
                     </div>
                   </div>
-                </template>
-                <q-card>
-                  <q-card-section class="q-pl-md q-pr-xs q-py-xs">
-                    <div class="filter-values-container">
-                      <div
-                        v-show="fieldValues[props.row.name]?.isLoading"
-                        class="q-pl-md q-py-xs"
-                        style="height: 60px"
-                      >
-                        <q-inner-loading
-                          size="xs"
-                          :showing="fieldValues[props.row.name]?.isLoading"
-                          label="Fetching values..."
-                          label-style="font-size: 1.1em"
-                        />
-                      </div>
-                      <div
-                        v-show="
-                          !fieldValues[props.row.name]?.values?.length &&
-                          !fieldValues[props.row.name]?.isLoading
-                        "
-                        class="q-pl-md q-py-xs text-subtitle2"
-                      >
-                        No values found
-                      </div>
-                      <div
-                        v-for="value in fieldValues[props.row.name]?.values ||
-                        []"
-                        :key="value.key"
-                      >
-                        <q-list dense>
-                          <q-item tag="label" class="q-pr-none">
-                            <div
-                              class="flex row wrap justify-between"
-                              style="width: calc(100% - 46px)"
-                            >
-                              <div
-                                :title="value.key"
-                                class="ellipsis q-pr-xs"
-                                style="width: calc(100% - 50px)"
-                              >
-                                {{ value.key }}
-                              </div>
-                              <div
-                                :title="value.count"
-                                class="ellipsis text-right q-pr-sm"
-                                style="width: 50px"
-                              >
-                                {{ value.count }}
-                              </div>
-                            </div>
-                            <div
-                              class="flex row"
-                              :class="
-                                store.state.theme === 'dark'
-                                  ? 'text-white'
-                                  : 'text-black'
-                              "
-                            >
-                              <q-btn
-                                class="q-mr-xs"
-                                size="6px"
-                                title="Include Term"
-                                round
-                                @click="
-                                  addSearchTerm(
-                                    `${props.row.name}='${value.key}'`
-                                  )
-                                "
-                              >
-                                <q-icon>
-                                  <EqualIcon></EqualIcon>
-                                </q-icon>
-                              </q-btn>
-                              <q-btn
-                                class="q-mr-xs"
-                                size="6px"
-                                title="Include Term"
-                                round
-                                @click="
-                                  addSearchTerm(
-                                    `${props.row.name}!='${value.key}'`
-                                  )
-                                "
-                              >
-                                <q-icon>
-                                  <NotEqualIcon></NotEqualIcon>
-                                </q-icon>
-                              </q-btn>
-                            </div>
-                          </q-item>
-                        </q-list>
-                      </div>
-                    </div>
-                  </q-card-section>
-                </q-card>
-              </q-expansion-item>
-            </q-td>
-          </q-tr>
-        </template>
-        <template #top-right>
-          <q-input
-            data-test="log-search-index-list-field-search-input"
-            v-model="filterFieldValue"
-            data-cy="index-field-search-input"
-            filled
-            borderless
-            dense
-            clearable
-            debounce="1"
-            :placeholder="t('search.searchField')"
-          >
-            <template #prepend>
-              <q-icon name="search" />
-            </template>
-          </q-input>
-        </template>
-      </q-table>
+                </div>
+              </q-card-section>
+            </q-card>
+          </q-expansion-item>
+        </div>
+      </div>
     </div>
   </div>
 </template>
 
 <script lang="ts">
-import { defineEmits, defineComponent, ref, type Ref } from "vue";
+import { defineComponent, ref, type Ref } from "vue";
 import { useI18n } from "vue-i18n";
 import { useStore } from "vuex";
 import { useQuasar } from "quasar";
@@ -222,15 +247,9 @@ import { useRouter } from "vue-router";
 import { formatLargeNumber, getImageURL } from "@/utils/zincutils";
 import streamService from "@/services/stream";
 import { outlinedAdd } from "@quasar/extras/material-icons-outlined";
-import EqualIcon from "@/components/icons/EqualIcon.vue";
-import NotEqualIcon from "@/components/icons/NotEqualIcon.vue";
 
 export default defineComponent({
-  name: "IndexList",
-  components: {
-    EqualIcon,
-    NotEqualIcon,
-  },
+  name: "FieldList",
   props: {
     fields: {
       type: Array,
@@ -252,6 +271,18 @@ export default defineComponent({
     streamType: {
       type: String,
       default: "logs",
+    },
+    highlightFields: {
+      type: Array,
+      default: () => [],
+    },
+    fieldActions: {
+      type: Array,
+      default: () => [],
+    },
+    valueActions: {
+      type: Array,
+      default: () => [],
     },
   },
   emits: ["event-emitted"],
@@ -295,6 +326,7 @@ export default defineComponent({
         isLoading: true,
         values: [],
       };
+
       streamService
         .fieldValues({
           org_identifier: store.state.selectedOrganization.identifier,
@@ -352,6 +384,7 @@ export default defineComponent({
 .traces-field-table {
   height: calc(100vh - 190px) !important;
 }
+
 .q-menu {
   box-shadow: 0px 3px 15px rgba(0, 0, 0, 0.1);
   transform: translateY(0.5rem);
@@ -361,6 +394,7 @@ export default defineComponent({
     padding: 0.5rem;
   }
 }
+
 .index-menu {
   width: 100%;
 
@@ -374,6 +408,7 @@ export default defineComponent({
         padding-top: 0px !important;
       }
     }
+
     &__native :first-of-type {
       padding-top: 0.25rem;
     }
@@ -387,9 +422,11 @@ export default defineComponent({
       display: table;
       table-layout: fixed !important;
     }
+
     tr {
       margin-bottom: 1px;
     }
+
     tbody,
     tr,
     td {
@@ -403,6 +440,7 @@ export default defineComponent({
     label.q-field {
       width: 100%;
     }
+
     .q-table thead tr,
     .q-table tbody td {
       height: auto;
@@ -412,6 +450,7 @@ export default defineComponent({
       border-bottom: unset;
     }
   }
+
   .traces-field-table {
     width: 100%;
   }
@@ -464,6 +503,7 @@ export default defineComponent({
         }
       }
     }
+
     &:hover {
       .field-container {
         background-color: color-mix(in srgb, currentColor 15%, transparent);
@@ -497,12 +537,14 @@ export default defineComponent({
     color: $primary;
   }
 }
+
 .q-field--dense .q-field__before,
 .q-field--dense .q-field__prepend {
   padding: 0px 0px 0px 0px;
   height: auto;
   line-height: auto;
 }
+
 .q-field__native,
 .q-field__input {
   padding: 0px 0px 0px 0px;
@@ -511,6 +553,7 @@ export default defineComponent({
 .q-field--dense .q-field__label {
   top: 5px;
 }
+
 .q-field--dense .q-field__control,
 .q-field--dense .q-field__marginal {
   height: 34px;
@@ -531,6 +574,7 @@ export default defineComponent({
         height: 25px !important;
         min-height: 25px !important;
       }
+
       .q-item__section--avatar {
         min-width: 12px;
         max-width: 12px;
@@ -546,6 +590,7 @@ export default defineComponent({
           }
         }
       }
+
       .q-item-type {
         &:hover {
           .field_overlay {
@@ -557,6 +602,7 @@ export default defineComponent({
           }
         }
       }
+
       .field-expansion-icon {
         img {
           width: 12px;
