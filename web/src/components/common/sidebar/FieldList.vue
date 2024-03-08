@@ -36,7 +36,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
         style="height: calc(100% - 40px); overflow-y: auto; overflow-x: hidden"
         class="field_list"
       >
-        <div v-for="field in fields" :key="field.name">
+        <div v-for="field in (fields as any[])" :key="field.name">
           <!-- TODO OK : Repeated code make seperate component to display field  -->
           <div
             v-if="field.ftsKey || !field.showValues"
@@ -71,7 +71,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
                     style="margin-right: 0.375rem"
                     size="0.4rem"
                     class="q-mr-sm"
-                    @click.stop="addSearchTerm(`${field.name}=''`)"
+                    @click.stop="handleAction(fieldAction, field, null)"
                     round
                   />
                 </template>
@@ -90,11 +90,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
             @before-show="(event: any) => openFilterCreator(event, field)"
           >
             <template v-slot:header>
-              <div
-                style="height: 25px"
-                class="flex content-center ellipsis"
-                :title="field.name"
-              >
+              <div class="flex content-center ellipsis" :title="field.name">
                 <div class="field_label ellipsis">
                   {{ field.name }}
                 </div>
@@ -129,7 +125,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
                         }"
                         size="18px"
                         class="q-mr-sm cursor-pointer"
-                        @click.stop="addSearchTerm(`${field.name}=''`)"
+                        @click.stop="handleAction(fieldAction, field, null)"
                       />
                     </template>
                   </template>
@@ -222,7 +218,9 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
                             }"
                             size="10px"
                             class="q-mr-xs cursor-pointer"
-                            @click.stop="addSearchTerm(`${field.name}=''`)"
+                            @click.stop="
+                              handleAction(fieldAction, field, value)
+                            "
                           />
                         </template>
                       </template>
@@ -364,6 +362,10 @@ export default defineComponent({
       emit("event-emitted", "add-field", term);
     };
 
+    const handleAction = (action: any, field: any, value: any) => {
+      emit("event-emitted", action, field, value);
+    };
+
     return {
       t,
       store,
@@ -375,6 +377,7 @@ export default defineComponent({
       fieldValues,
       outlinedAdd,
       filterFieldValue,
+      handleAction,
     };
   },
 });
@@ -562,56 +565,32 @@ export default defineComponent({
 
 <style lang="scss">
 .index-table {
-  .q-table {
-    width: 100%;
-    table-layout: fixed;
+  .q-expansion-item {
+    .q-item {
+      display: flex;
+      align-items: center;
+      padding: 0;
+      height: 28px !important;
+      min-height: 28px !important;
+    }
 
-    .q-expansion-item {
+    .q-item__section--avatar {
+      min-width: 12px;
+      max-width: 12px;
+      margin-right: 8px;
+    }
+
+    .filter-values-container {
       .q-item {
-        display: flex;
-        align-items: center;
-        padding: 0;
-        height: 25px !important;
-        min-height: 25px !important;
-      }
+        padding-left: 4px;
 
-      .q-item__section--avatar {
-        min-width: 12px;
-        max-width: 12px;
-        margin-right: 8px;
-      }
-
-      .filter-values-container {
-        .q-item {
-          padding-left: 4px;
-
-          .q-focus-helper {
-            background: none !important;
-          }
-        }
-      }
-
-      .q-item-type {
-        &:hover {
-          .field_overlay {
-            visibility: visible;
-
-            .q-icon {
-              opacity: 1;
-            }
-          }
-        }
-      }
-
-      .field-expansion-icon {
-        img {
-          width: 12px;
-          height: 12px;
+        .q-focus-helper {
+          background: none !important;
         }
       }
     }
 
-    .field-container {
+    .q-item-type {
       &:hover {
         .field_overlay {
           visibility: visible;
@@ -623,15 +602,34 @@ export default defineComponent({
       }
     }
 
-    .field_list {
-      &.selected {
-        .q-expansion-item {
-          background-color: rgba(89, 96, 178, 0.3);
-        }
+    .field-expansion-icon {
+      img {
+        width: 12px;
+        height: 12px;
+      }
+    }
+  }
 
-        .field_overlay {
-          // background-color: #ffffff;
+  .field-container {
+    &:hover {
+      .field_overlay {
+        visibility: visible;
+
+        .q-icon {
+          opacity: 1;
         }
+      }
+    }
+  }
+
+  .field_list {
+    &.selected {
+      .q-expansion-item {
+        background-color: rgba(89, 96, 178, 0.3);
+      }
+
+      .field_overlay {
+        // background-color: #ffffff;
       }
     }
   }
