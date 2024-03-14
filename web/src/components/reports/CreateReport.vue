@@ -1020,12 +1020,6 @@ const onDashboardSelection = (dashboardId: any) => {
   options.value["tabs"] = [...dashboardTabOptions.value];
 };
 
-const filterFolders = () => {};
-
-const filterDashboard = () => {};
-
-const filterTabs = () => {};
-
 const updateDateTime = (datetime: any) => {
   formData.value.dashboards[0].timerange.type =
     datetime.valueType === "relative-custom" ? "relative" : datetime.valueType;
@@ -1035,12 +1029,6 @@ const updateDateTime = (datetime: any) => {
 
   formData.value.dashboards[0].timerange.period =
     datetime.relativeTimePeriod || "30m";
-};
-
-const scheduleInfoMapping = {
-  frequency: {
-    once: "immediately",
-  },
 };
 
 const customFrequencyOptions = [
@@ -1203,7 +1191,7 @@ const saveReport = async () => {
   formData.value.orgId = store.state.selectedOrganization.identifier;
 
   formData.value.destinations = emails.value.split(/[,;]/).map((email) => ({
-    email,
+    email: email.trim(),
   }));
 
   if (frequency.value.type === "custom") {
