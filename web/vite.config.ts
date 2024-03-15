@@ -95,7 +95,7 @@ export default defineConfig({
   server: {
     port: 8081,
   },
-  base: "./web/",
+  base: "./",
   plugins: [
     vue({
       template: { transformAssetUrls },
