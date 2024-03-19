@@ -394,7 +394,7 @@ export default defineComponent({
     const showTutorial = () => {
       window.open("https://short.openobserve.ai/dashboard-tutorial");
     };
-    
+
     const variablesDataUpdated = (data: any) => {
       Object.assign(variablesData, data);
     };
@@ -926,7 +926,7 @@ export default defineComponent({
             }
             if (
               dashboardData.data.queries[dashboardData.layout.currentQueryIndex]
-                .fields.valueForMaps == null
+                .fields.value_for_maps == null
             ) {
               errors.push("Add one field for the value");
             }
