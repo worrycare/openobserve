@@ -89,6 +89,7 @@ import { useRouter } from "vue-router";
 import { useI18n } from "vue-i18n";
 import templateService from "@/services/alert_templates";
 import destinationService from "@/services/alert_destination";
+import { onActivated } from "vue";
 
 export default defineComponent({
   name: "AppAlerts",
@@ -105,13 +106,9 @@ export default defineComponent({
       redirectRoute();
     });
 
-    watch(
-      () => router.currentRoute.value.name,
-      (routeName) => {
-        // This is handled for browser back button, as it was redirecting to this app alerts page and not alert list page
-        if (routeName === "alerts") router.back();
-      }
-    );
+    onActivated(() => {
+      redirectRoute();
+    });
 
     const redirectRoute = () => {
       if (router.currentRoute.value.name === "alerts") {

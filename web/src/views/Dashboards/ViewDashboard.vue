@@ -423,7 +423,7 @@ export default defineComponent({
     // back button to render dashboard List page
     const goBackToDashboardList = () => {
       return router.push({
-        path: "/dashboards",
+        name: "dashboards",
         query: {
           dashboard: route.query.dashboard,
           folder: route.query.folder ?? "default",

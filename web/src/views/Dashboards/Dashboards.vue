@@ -61,243 +61,167 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
         @click="addDashboard"
       />
     </div>
-    <q-splitter
-      v-model="splitterModel"
-      unit="px"
-      :limits="[200, 500]"
-      style="height: calc(100vh - 122px)"
-      data-test="dashboard-splitter"
+    <!-- add dashboard table -->
+    <q-table
+      ref="qTable"
+      :rows="dashboards"
+      :columns="columns"
+      row-key="id"
+      :pagination="pagination"
+      :filter="filterQuery"
+      :filter-method="filterData"
+      :loading="loading"
+      @row-click="onRowClick"
+      data-test="dashboard-table"
     >
-      <template v-slot:before>
-        <div class="text-bold q-px-md q-pt-sm">
-          {{ t("dashboard.folderLabel") }}
-        </div>
-        <div class="dashboards-tabs">
-          <q-tabs
-            indicator-color="transparent"
-            inline-label
-            vertical
-            v-model="activeFolderId"
-            data-test="dashboards-folder-tabs"
-          >
-            <q-tab
-              v-for="(tab, index) in store.state.organizationData.folders"
-              :key="tab.folderId"
-              :name="tab.folderId"
-              content-class="tab_content full-width"
-              :data-test="`dashboard-folder-tab-${tab.folderId}`"
-            >
-              <div class="full-width row justify-between no-wrap">
-                <span
-                  style="
-                    white-space: nowrap;
-                    overflow: hidden;
-                    text-overflow: ellipsis;
-                  "
-                  :title="tab.name"
-                  >{{ tab.name }}</span
-                >
-                <div>
-                  <q-icon
-                    v-if="index"
-                    :name="outlinedEdit"
-                    class="q-ml-sm"
-                    @click.stop="editFolder(tab.folderId)"
-                    style="cursor: pointer; justify-self: end"
-                    data-test="dashboard-edit-folder-icon"
-                  />
-                  <q-icon
-                    v-if="index"
-                    :name="outlinedDelete"
-                    class="q-ml-sm"
-                    @click.stop="showDeleteFolderDialogFn(tab.folderId)"
-                    style="cursor: pointer; justify-self: end"
-                    data-test="dashboard-delete-folder-icon"
-                  />
-                </div>
-              </div>
-            </q-tab>
-          </q-tabs>
-          <div
-            class="row justify-center full-width q-px-xs q-pb-xs"
-            style="position: sticky; bottom: 0px"
-          >
-            <q-btn
-              class="text-bold no-border full-width"
-              padding="sm lg"
-              color="secondary"
-              no-caps
-              :label="t('dashboard.newFolderBtnLabel')"
-              @click.stop="addFolder"
-              data-test="dashboard-new-folder-btn"
-            />
+      <!-- if data not available show nodata component -->
+      <template #no-data>
+        <NoData />
+      </template>
+      <template #body-cell-description="props">
+        <q-td :props="props">
+          <div :title="props.value">
+            {{
+              props.value && props.value.length > 45
+                ? props.value.slice(0, 45) + "..."
+                : props.value
+            }}
           </div>
-        </div>
+        </q-td>
       </template>
-      <template v-slot:after>
-        <!-- add dashboard table -->
-        <q-table
-          ref="qTable"
-          :rows="dashboards"
-          :columns="columns"
-          row-key="id"
-          :pagination="pagination"
-          :filter="filterQuery"
-          :filter-method="filterData"
-          :loading="loading"
-          @row-click="onRowClick"
-          data-test="dashboard-table"
-        >
-          <!-- if data not available show nodata component -->
-          <template #no-data>
-            <NoData />
-          </template>
-          <template #body-cell-description="props">
-            <q-td :props="props">
-              <div :title="props.value">
-                {{
-                  props.value && props.value.length > 45
-                    ? props.value.slice(0, 45) + "..."
-                    : props.value
-                }}
-              </div>
-            </q-td>
-          </template>
-          <!-- add delete icon in actions column -->
-          <template #body-cell-actions="props">
-            <q-td :props="props">
-              <q-btn
-                v-if="props.row.actions == 'true'"
-                :icon="outlinedDriveFileMove"
-                :title="t('dashboard.move_to_another_folder')"
-                class="q-ml-xs"
-                padding="sm"
-                unelevated
-                size="sm"
-                round
-                flat
-                @click.stop="showMoveDashboardPanel(props.row.id)"
-                data-test="dashboard-move-to-another-folder"
-              ></q-btn>
-              <q-btn
-                v-if="props.row.actions == 'true'"
-                icon="content_copy"
-                :title="t('dashboard.duplicate')"
-                class="q-ml-xs"
-                padding="sm"
-                unelevated
-                size="sm"
-                round
-                flat
-                @click.stop="duplicateDashboard(props.row.id)"
-                data-test="dashboard-duplicate"
-              ></q-btn>
-              <q-btn
-                v-if="props.row.actions == 'true'"
-                :icon="outlinedDelete"
-                :title="t('dashboard.delete')"
-                class="q-ml-xs"
-                padding="sm"
-                unelevated
-                size="sm"
-                round
-                data-test="dashboard-delete"
-                flat
-                @click.stop="showDeleteDialogFn(props)"
-              ></q-btn>
-            </q-td>
-          </template>
-          <!-- searchBar at top -->
-          <template #top="scope">
-            <!-- table pagination -->
-            <QTablePagination
-              :scope="scope"
-              :pageTitle="t('dashboard.header')"
-              :resultTotal="resultTotal"
-              :perPageOptions="perPageOptions"
-              position="top"
-              @update:changeRecordPerPage="changePagination"
-            />
-          </template>
-
-          <template #bottom="scope">
-            <QTablePagination
-              :scope="scope"
-              :resultTotal="resultTotal"
-              :perPageOptions="perPageOptions"
-              :maxRecordToReturn="maxRecordToReturn"
-              position="bottom"
-              @update:changeRecordPerPage="changePagination"
-              @update:maxRecordToReturn="changeMaxRecordToReturn"
-            />
-          </template>
-        </q-table>
-
-        <!-- add dashboard -->
-        <q-dialog
-          v-model="showAddDashboardDialog"
-          position="right"
-          full-height
-          maximized
-          data-test="dashboard-add-dialog"
-        >
-          <AddDashboard
-            @updated="updateDashboardList"
-            :activeFolderId="activeFolderId"
-          />
-        </q-dialog>
-
-        <!-- add/edit folder -->
-        <q-dialog
-          v-model="showAddFolderDialog"
-          position="right"
-          full-height
-          maximized
-          data-test="dashboard-folder-dialog"
-        >
-          <AddFolder
-            @update:modelValue="updateFolderList"
-            :edit-mode="isFolderEditMode"
-            :folder-id="selectedFolderToEdit ?? 'default'"
-          />
-        </q-dialog>
-
-        <!-- move dashboard to another folder -->
-        <q-dialog
-          v-model="showMoveDashboardDialog"
-          position="right"
-          full-height
-          maximized
-          data-test="dashboard-move-to-another-folder-dialog"
-        >
-          <MoveDashboardToAnotherFolder
-            @updated="handleDashboardMoved"
-            :dashboard-id="selectedDashboardIdToMove"
-            :activeFolderId="activeFolderId"
-          />
-        </q-dialog>
-
-        <!-- delete dashboard dialog -->
-        <ConfirmDialog
-          title="Delete dashboard"
-          data-test="dashboard-confirm-dialog"
-          message="Are you sure you want to delete the dashboard?"
-          @update:ok="deleteDashboard"
-          @update:cancel="confirmDeleteDialog = false"
-          v-model="confirmDeleteDialog"
-        />
-
-        <!-- delete folder dialog -->
-        <ConfirmDialog
-          title="Delete Folder"
-          data-test="dashboard-confirm-delete-folder-dialog"
-          message="Are you sure you want to delete this Folder?"
-          @update:ok="deleteFolder"
-          @update:cancel="confirmDeleteFolderDialog = false"
-          v-model="confirmDeleteFolderDialog"
+      <!-- add delete icon in actions column -->
+      <template #body-cell-actions="props">
+        <q-td :props="props">
+          <q-btn
+            v-if="props.row.actions == 'true'"
+            :icon="outlinedDriveFileMove"
+            :title="t('dashboard.move_to_another_folder')"
+            class="q-ml-xs"
+            padding="sm"
+            unelevated
+            size="sm"
+            round
+            flat
+            @click.stop="showMoveDashboardPanel(props.row.id)"
+            data-test="dashboard-move-to-another-folder"
+          ></q-btn>
+          <q-btn
+            v-if="props.row.actions == 'true'"
+            icon="content_copy"
+            :title="t('dashboard.duplicate')"
+            class="q-ml-xs"
+            padding="sm"
+            unelevated
+            size="sm"
+            round
+            flat
+            @click.stop="duplicateDashboard(props.row.id)"
+            data-test="dashboard-duplicate"
+          ></q-btn>
+          <q-btn
+            v-if="props.row.actions == 'true'"
+            :icon="outlinedDelete"
+            :title="t('dashboard.delete')"
+            class="q-ml-xs"
+            padding="sm"
+            unelevated
+            size="sm"
+            round
+            data-test="dashboard-delete"
+            flat
+            @click.stop="showDeleteDialogFn(props)"
+          ></q-btn>
+        </q-td>
+      </template>
+      <!-- searchBar at top -->
+      <template #top="scope">
+        <!-- table pagination -->
+        <QTablePagination
+          :scope="scope"
+          :pageTitle="t('dashboard.header')"
+          :resultTotal="resultTotal"
+          :perPageOptions="perPageOptions"
+          position="top"
+          @update:changeRecordPerPage="changePagination"
         />
       </template>
-    </q-splitter>
+
+      <template #bottom="scope">
+        <QTablePagination
+          :scope="scope"
+          :resultTotal="resultTotal"
+          :perPageOptions="perPageOptions"
+          :maxRecordToReturn="maxRecordToReturn"
+          position="bottom"
+          @update:changeRecordPerPage="changePagination"
+          @update:maxRecordToReturn="changeMaxRecordToReturn"
+        />
+      </template>
+    </q-table>
+
+    <!-- add dashboard -->
+    <q-dialog
+      v-model="showAddDashboardDialog"
+      position="right"
+      full-height
+      maximized
+      data-test="dashboard-add-dialog"
+    >
+      <AddDashboard
+        @updated="updateDashboardList"
+        :activeFolderId="activeFolderId"
+      />
+    </q-dialog>
+
+    <!-- add/edit folder -->
+    <q-dialog
+      v-model="showAddFolderDialog"
+      position="right"
+      full-height
+      maximized
+      data-test="dashboard-folder-dialog"
+    >
+      <AddFolder
+        @update:modelValue="updateFolderList"
+        :edit-mode="isFolderEditMode"
+        :folder-id="selectedFolderToEdit ?? 'default'"
+      />
+    </q-dialog>
+
+    <!-- move dashboard to another folder -->
+    <q-dialog
+      v-model="showMoveDashboardDialog"
+      position="right"
+      full-height
+      maximized
+      data-test="dashboard-move-to-another-folder-dialog"
+    >
+      <MoveDashboardToAnotherFolder
+        @updated="handleDashboardMoved"
+        :dashboard-id="selectedDashboardIdToMove"
+        :activeFolderId="activeFolderId"
+      />
+    </q-dialog>
+
+    <!-- delete dashboard dialog -->
+    <ConfirmDialog
+      title="Delete dashboard"
+      data-test="dashboard-confirm-dialog"
+      message="Are you sure you want to delete the dashboard?"
+      @update:ok="deleteDashboard"
+      @update:cancel="confirmDeleteDialog = false"
+      v-model="confirmDeleteDialog"
+    />
+
+    <!-- delete folder dialog -->
+    <ConfirmDialog
+      title="Delete Folder"
+      data-test="dashboard-confirm-delete-folder-dialog"
+      message="Are you sure you want to delete this Folder?"
+      @update:ok="deleteFolder"
+      @update:cancel="confirmDeleteFolderDialog = false"
+      v-model="confirmDeleteFolderDialog"
+    />
   </q-page>
 </template>
 
@@ -470,13 +394,6 @@ export default defineComponent({
         });
         await getAllDashboardsByFolderId(store, activeFolderId.value);
         dismiss();
-        router.push({
-          path: "/dashboards",
-          query: {
-            org_identifier: store.state.selectedOrganization.identifier,
-            folder: activeFolderId.value,
-          },
-        });
       },
       { deep: true }
     );

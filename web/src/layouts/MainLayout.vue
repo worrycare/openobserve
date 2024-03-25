@@ -491,19 +491,14 @@ export default defineComponent({
         link: "/rum/performance/overview",
       },
       {
-        title: t("menu.dashboard"),
+        title: t("menu.projects"),
         icon: outlinedDashboard,
-        link: "/dashboards",
+        link: "/projects",
       },
       {
         title: t("menu.index"),
         icon: outlinedWindow,
         link: "/streams",
-      },
-      {
-        title: t("menu.alerts"),
-        icon: outlinedReportProblem,
-        link: "/alerts",
       },
       {
         title: t("menu.ingestion"),

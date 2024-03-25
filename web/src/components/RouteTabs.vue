@@ -1,11 +1,12 @@
 <template>
   <q-tabs
     :data-test="dataTest"
-    v-model="activeTab"
+    v-model="selectedTab"
     indicator-color="transparent"
     inline-label
     :vertical="direction === 'vertical'"
     class="q-mx-xs o2-route-tabs"
+    no-caps
     @update:model-value="handleTabChange"
   >
     <template v-for="tab in (tabs as any)" :key="tab.name">
@@ -21,6 +22,7 @@
 </template>
 
 <script setup lang="ts">
+import { onMounted } from "vue";
 import { nextTick } from "vue";
 import { ref, watch } from "vue";
 
@@ -45,15 +47,19 @@ const props = defineProps({
 
 const emits = defineEmits(["update:activeTab"]);
 
-const activeTab = ref(props.activeTab);
+const selectedTab = ref("");
+
+onMounted(() => {
+  selectedTab.value = props.activeTab;
+});
 
 const setActiveTab = async (value: string) => {
   await nextTick();
-  activeTab.value = value;
+  selectedTab.value = value;
 };
 
 const handleTabChange = (tab: string) => {
-  activeTab.value = tab;
+  selectedTab.value = tab;
   emits("update:activeTab", tab);
 };
 
@@ -84,6 +90,30 @@ defineExpose({
         }
         &--active {
           background-color: $accent;
+          color: black;
+        }
+      }
+    }
+    &--horizontal {
+      .q-tab {
+        justify-content: center;
+        padding: 0 1rem 0 1.25rem;
+        margin-bottom: 0.5rem;
+        margin: 0 0.25rem;
+        text-transform: capitalize;
+        min-height: 40px !important;
+        border-bottom: 2px solid transparent;
+
+        &__content.tab_content {
+          .q-tab {
+            &__icon + &__label {
+              padding-left: 0.875rem;
+              font-weight: 600;
+            }
+          }
+        }
+        &--active {
+          border-bottom: 2px solid $primary;
           color: black;
         }
       }

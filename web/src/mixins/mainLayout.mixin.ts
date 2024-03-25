@@ -14,12 +14,6 @@ const MainLayoutOpenSourceMixin = {
      * @returns linksList.value
      */
     const leftNavigationLinks = (linksList: any, t: any) => {
-      linksList.value.splice(5, 0, {
-        title: t("menu.function"),
-        iconComponent: markRaw(FunctionIcon),
-        link: "/functions",
-      });
-
       return linksList.value;
     };
 

@@ -45,6 +45,7 @@ const ErrorViewer = () => import("@/views/RUM/ErrorViewer.vue");
 const AppPerformance = () => import("@/views/RUM/AppPerformance.vue");
 const AppErrors = () => import("@/views/RUM/AppErrors.vue");
 const AppSessions = () => import("@/views/RUM/AppSessions.vue");
+const AppProjects = () => import("@/views/Projects.vue");
 
 const PerformanceSummary = () =>
   import("@/components/rum/performance/PerformanceSummary.vue");
@@ -58,6 +59,7 @@ const ApiDashboard = () =>
 import { routeGuard } from "@/utils/zincutils";
 import useIngestionRoutes from "./useIngestionRoutes";
 import useIamRoutes from "./useIamRoutes";
+import AppAlerts from "@/views/AppAlerts.vue";
 
 const useRoutes = () => {
   const parentRoutes: never[] = [];
@@ -141,17 +143,6 @@ const useRoutes = () => {
       },
     },
     {
-      path: "dashboards",
-      name: "dashboards",
-      component: Dashboards,
-      meta: {
-        keepAlive: true,
-      },
-      beforeEnter(to: any, from: any, next: any) {
-        routeGuard(to, from, next);
-      },
-    },
-    {
       path: "/dashboards/view",
       name: "viewDashboard",
       component: ViewDashboard,
@@ -220,70 +211,91 @@ const useRoutes = () => {
       ],
     },
     {
-      path: "functions",
-      name: "functions",
-      component: Functions,
+      path: "projects",
+      name: "projects",
+      component: AppProjects,
       beforeEnter(to: any, from: any, next: any) {
         routeGuard(to, from, next);
       },
-      children: [
-        {
-          path: "functions",
-          name: "functionList",
-          component: FunctionList,
-          beforeEnter(to: any, from: any, next: any) {
-            routeGuard(to, from, next);
-          },
-        },
-        {
-          path: "stream-association",
-          name: "streamFunctions",
-          component: AssociatedStreamFunction,
-          beforeEnter(to: any, from: any, next: any) {
-            routeGuard(to, from, next);
-          },
-        },
-        {
-          path: "enrichment-tables",
-          name: "enrichmentTables",
-          component: EnrichmentTableList,
-          beforeEnter(to: any, from: any, next: any) {
-            routeGuard(to, from, next);
-          },
-        },
-      ],
-    },
-    {
-      path: "alerts",
-      name: "alerts",
-      component: Alerts,
-      beforeEnter(to: any, from: any, next: any) {
-        routeGuard(to, from, next);
+      meta: {
+        keepAlive: true,
       },
       children: [
+        {
+          path: "dashboards",
+          name: "dashboards",
+          component: Dashboards,
+          beforeEnter(to: any, from: any, next: any) {
+            routeGuard(to, from, next);
+          },
+        },
         {
           path: "alerts",
-          name: "alertList",
-          component: AlertList,
+          name: "alerts",
+          component: Alerts,
           beforeEnter(to: any, from: any, next: any) {
             routeGuard(to, from, next);
           },
+          children: [
+            {
+              path: "alerts",
+              name: "alertList",
+              component: AlertList,
+              beforeEnter(to: any, from: any, next: any) {
+                routeGuard(to, from, next);
+              },
+            },
+            {
+              path: "destinations",
+              name: "alertDestinations",
+              component: DestinationList,
+              beforeEnter(to: any, from: any, next: any) {
+                routeGuard(to, from, next);
+              },
+            },
+            {
+              path: "templates",
+              name: "alertTemplates",
+              component: TemplateList,
+              beforeEnter(to: any, from: any, next: any) {
+                routeGuard(to, from, next);
+              },
+            },
+          ],
         },
         {
-          path: "destinations",
-          name: "alertDestinations",
-          component: DestinationList,
+          path: "functions",
+          name: "functions",
+          component: Functions,
           beforeEnter(to: any, from: any, next: any) {
             routeGuard(to, from, next);
           },
-        },
-        {
-          path: "templates",
-          name: "alertTemplates",
-          component: TemplateList,
-          beforeEnter(to: any, from: any, next: any) {
-            routeGuard(to, from, next);
-          },
+          children: [
+            {
+              path: "functions",
+              name: "functionList",
+              component: FunctionList,
+              beforeEnter(to: any, from: any, next: any) {
+                routeGuard(to, from, next);
+              },
+            },
+            {
+              path: "stream-association",
+              name: "streamFunctions",
+              component: AssociatedStreamFunction,
+              beforeEnter(to: any, from: any, next: any) {
+                routeGuard(to, from, next);
+              },
+            },
+            {
+              path: "enrichment-tables",
+              name: "enrichmentTables",
+              component: EnrichmentTableList,
+              beforeEnter(to: any, from: any, next: any) {
+                routeGuard(to, from, next);
+              },
+            },
+          ],
         },
       ],
     },
